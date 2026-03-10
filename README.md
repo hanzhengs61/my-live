@@ -1,2 +1,2 @@
 # my-live
-my-live is a streaming media platform that uses streaming media technology to achieve real-time acquisition, transmission, and distribution of video and audio content. It also integrates a comprehensive internet system for social interaction (pinball comments, gifts, real-time chat) and commercial monetization (e-commerce, tipping).
+my-live是一个流媒体平台，利用流媒体技术实现视频和音频内容的实时采集、传输和分发。
