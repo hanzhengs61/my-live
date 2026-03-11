@@ -50,7 +50,7 @@ func (h *Hub) Start() {
 				}
 				h.rooms[client.roomID][client] = true
 				h.mu.Unlock()
-				h.broadcastRoomOnlineCount(client.roomID)
+				h.broadcastOnlineCount(client.roomID)
 				log.Printf("✅ 用户 %d 加入房间 [%s]，当前房间人数: %d", client.userID, client.roomID, len(h.rooms[client.roomID]))
 
 			// 有客户端断开
@@ -65,6 +65,7 @@ func (h *Hub) Start() {
 					}
 				}
 				h.mu.Unlock()
+				h.broadcastOnlineCount(client.roomID)
 				log.Printf("❌ 用户 %d 离开房间 [%s]", client.userID, client.roomID)
 
 			// 需要广播的消息来了
@@ -98,7 +99,7 @@ func (h *Hub) Start() {
 }
 
 // 广播房间在线人数（万人不卡，因为只遍历一次）
-func (h *Hub) broadcastRoomOnlineCount(roomID string) {
+func (h *Hub) broadcastOnlineCount(roomID string) {
 	h.mu.RLock()
 	count := 0
 	if clients, ok := h.rooms[roomID]; ok {

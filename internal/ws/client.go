@@ -34,8 +34,14 @@ func (c *Client) readPump() {
 	for {
 		_, data, err := c.conn.ReadMessage()
 		if err != nil {
+			// 判断是否是正常关闭（浏览器关闭页面就是1001）
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) ||
+				websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) == false {
+				// 正常关闭，不打印错误日志
+				return
+			}
 			log.Printf("读取错误: %v", err)
-			break
+			return
 		}
 
 		msg, err := ParseMessage(data)
