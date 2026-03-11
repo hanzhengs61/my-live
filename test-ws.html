@@ -2,12 +2,12 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>直播WebSocket测试 - 第3阶段（实时在线人数）</title>
+    <title>直播WebSocket测试 - 第4阶段（礼物限流）</title>
 </head>
 <body>
-<h2>直播实时消息测试（房间 + 实时在线人数）</h2>
-<p>房间ID：<input id="room" value="room001" style="width:150px;">
-    用户ID：<input id="uid" value="1001" style="width:80px;">
+<h2>直播实时消息测试（礼物 + 限流）</h2>
+<p>房间ID：<input id="room" value="room001">
+    用户ID：<input id="uid" value="1001">
     昵称：<input id="nick" value="张三">
     <span id="onlineCount" style="color:green;font-weight:bold;">当前在线: 0 人</span>
 </p>
@@ -15,6 +15,7 @@
 <input id="msg" type="text" placeholder="输入弹幕" style="width:300px;">
 <button onclick="joinRoom()">加入房间</button>
 <button onclick="sendChat()">发送弹幕</button>
+<button onclick="sendGift()">送礼物（玫瑰）</button>  <!-- 新增按钮 -->
 <hr>
 <div id="output" style="border:1px solid #ccc; padding:10px; height:500px; overflow-y:scroll;"></div>
 
@@ -63,6 +64,22 @@
         ws.send(JSON.stringify(chatMsg));
         addMessage("我发送: " + content);
         document.getElementById("msg").value = "";
+    }
+
+    // 新增送礼物函数
+    function sendGift() {
+        if (!currentRoom) return;
+        const giftMsg = {
+            type: "gift",
+            room_id: currentRoom,
+            user_id: parseInt(document.getElementById("uid").value),
+            nickname: document.getElementById("nick").value,
+            gift_id: "rose",
+            gift_name: "玫瑰",
+            content: "送出 1 朵玫瑰 ❤️"
+        };
+        ws.send(JSON.stringify(giftMsg));
+        addMessage("我送出: 玫瑰 ❤️");
     }
 
     function addMessage(text) {

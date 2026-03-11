@@ -12,11 +12,12 @@ import (
 // 2.接收要广播的消息
 // 3.把消息推送给每一个客户端
 type Hub struct {
-	rooms      map[string]map[*Client]bool // 房间ID -> 该房间的所有客户端
-	broadcast  chan Message                // 广播通道：任何人想发消息，就把消息丢进这个通道
-	register   chan *Client                // 新客户端注册通道
-	unregister chan *Client                // 客户端断开通道
-	mu         sync.RWMutex                // 读写锁，防止并发读写clients map崩溃
+	rooms      map[string]map[*Client]bool    // 房间ID -> 该房间的所有客户端
+	broadcast  chan Message                   // 广播通道：任何人想发消息，就把消息丢进这个通道
+	register   chan *Client                   // 新客户端注册通道
+	unregister chan *Client                   // 客户端断开通道
+	mu         sync.RWMutex                   // 读写锁，防止并发读写clients map崩溃
+	giftLimit  map[string]map[int64]time.Time // 礼物限流（roomID -> userID -> 上次发送时间）
 }
 
 // 单例Hub（整个项目只用一个）
@@ -31,6 +32,7 @@ func GetHub() *Hub {
 			broadcast:  make(chan Message, 512), // 缓存512条，防止消息太快阻塞
 			register:   make(chan *Client),
 			unregister: make(chan *Client),
+			giftLimit:  make(map[string]map[int64]time.Time),
 		}
 	})
 	return hub
@@ -70,6 +72,14 @@ func (h *Hub) Start() {
 
 			// 需要广播的消息来了
 			case msg := <-h.broadcast:
+				// 礼物限流，如果超过1秒1个，直接丢弃不广播
+				if msg.Type == TypeGift {
+					if !h.allowGift(msg.RoomID, msg.UserID) {
+						log.Printf("❌ 礼物限流: 用户 %d 在房间 %s 被限流", msg.UserID, msg.RoomID)
+						continue
+					}
+				}
+
 				// 把这条消息发送给每一个在线客户端
 				h.mu.RLock()
 				roomClients, ok := h.rooms[msg.RoomID]
@@ -96,6 +106,25 @@ func (h *Hub) Start() {
 			}
 		}
 	}()
+}
+
+// 礼物限流检查
+func (h *Hub) allowGift(roomID string, userID int64) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	if h.giftLimit[roomID] == nil {
+		h.giftLimit[roomID] = make(map[int64]time.Time)
+	}
+
+	lastTime, exists := h.giftLimit[roomID][userID]
+	now := time.Now()
+
+	if !exists || now.Sub(lastTime) > time.Second {
+		h.giftLimit[roomID][userID] = now
+		return true
+	}
+	return false
 }
 
 // 广播房间在线人数（万人不卡，因为只遍历一次）
