@@ -149,3 +149,10 @@ func (h *Hub) broadcastOnlineCount(roomID string) {
 
 	h.broadcast <- onlineMsg
 }
+
+// Rooms 返回当前所有房间数量（用于调试 / 监控）
+func (h *Hub) Rooms() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.rooms)
+}
