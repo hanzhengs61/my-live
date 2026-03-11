@@ -3,6 +3,7 @@ package ws
 import (
 	"log"
 	"sync"
+	"time"
 )
 
 // Hub 是整个WebSocket的“大脑”（消息中心）
@@ -49,6 +50,7 @@ func (h *Hub) Start() {
 				}
 				h.rooms[client.roomID][client] = true
 				h.mu.Unlock()
+				h.broadcastRoomOnlineCount(client.roomID)
 				log.Printf("✅ 用户 %d 加入房间 [%s]，当前房间人数: %d", client.userID, client.roomID, len(h.rooms[client.roomID]))
 
 			// 有客户端断开
@@ -93,4 +95,27 @@ func (h *Hub) Start() {
 			}
 		}
 	}()
+}
+
+// 广播房间在线人数（万人不卡，因为只遍历一次）
+func (h *Hub) broadcastRoomOnlineCount(roomID string) {
+	h.mu.RLock()
+	count := 0
+	if clients, ok := h.rooms[roomID]; ok {
+		count = len(clients)
+	}
+	h.mu.RUnlock()
+
+	if count == 0 {
+		return
+	}
+
+	onlineMsg := Message{
+		Type:        TypeOnline,
+		RoomID:      roomID,
+		OnlineCount: count,
+		Timestamp:   time.Now().UnixMilli(),
+	}
+
+	h.broadcast <- onlineMsg
 }

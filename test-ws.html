@@ -2,13 +2,15 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>直播WebSocket测试 - 第2阶段（房间+心跳+JSON）</title>
+    <title>直播WebSocket测试 - 第3阶段（实时在线人数）</title>
 </head>
 <body>
-<h2>直播实时消息测试（按房间广播）</h2>
+<h2>直播实时消息测试（房间 + 实时在线人数）</h2>
 <p>房间ID：<input id="room" value="room001" style="width:150px;">
-    用户ID：<input id="uid" value="1003" style="width:80px;">
-    昵称：<input id="nick" value="范德彪"></p>
+    用户ID：<input id="uid" value="1001" style="width:80px;">
+    昵称：<input id="nick" value="张三">
+    <span id="onlineCount" style="color:green;font-weight:bold;">当前在线: 0 人</span>
+</p>
 
 <input id="msg" type="text" placeholder="输入弹幕" style="width:300px;">
 <button onclick="joinRoom()">加入房间</button>
@@ -27,12 +29,16 @@
         ws.onopen = () => {
             console.log("✅ 连接成功");
             addMessage("系统：WebSocket已连接");
-            joinRoom(); // 自动加入房间
+            joinRoom();
         };
 
         ws.onmessage = (e) => {
             const msg = JSON.parse(e.data);
-            addMessage(`[${msg.room_id}] ${msg.nickname}: ${msg.content} (type:${msg.type})`);
+            if (msg.type === "online") {
+                document.getElementById("onlineCount").textContent = `当前在线: ${msg.online_count} 人`;
+            } else {
+                addMessage(`[${msg.room_id}] ${msg.nickname}: ${msg.content}`);
+            }
         };
 
         ws.onclose = () => addMessage("系统：连接断开");
@@ -44,29 +50,18 @@
         const nick = document.getElementById("nick").value;
         currentRoom = room;
 
-        const joinMsg = {
-            type: "join",
-            room_id: room,
-            user_id: uid,
-            nickname: nick,
-            content: ""
-        };
+        const joinMsg = { type: "join", room_id: room, user_id: uid, nickname: nick };
         ws.send(JSON.stringify(joinMsg));
-        addMessage("系统：已申请加入房间 " + room);
+        addMessage("系统：已加入房间 " + room);
     }
 
     function sendChat() {
         const content = document.getElementById("msg").value;
         if (!content || !currentRoom) return;
 
-        const chatMsg = {
-            type: "chat",
-            room_id: currentRoom,
-            user_id: parseInt(document.getElementById("uid").value),
-            nickname: document.getElementById("nick").value,
-            content: content
-        };
+        const chatMsg = { type: "chat", room_id: currentRoom, user_id: parseInt(document.getElementById("uid").value), nickname: document.getElementById("nick").value, content: content };
         ws.send(JSON.stringify(chatMsg));
+        addMessage("我发送: " + content);
         document.getElementById("msg").value = "";
     }
 
@@ -76,13 +71,8 @@
         div.scrollTop = div.scrollHeight;
     }
 
-    // 启动连接
     connect();
-
-    // 回车发送
-    document.getElementById("msg").addEventListener("keypress", e => {
-        if (e.key === "Enter") sendChat();
-    });
+    document.getElementById("msg").addEventListener("keypress", e => { if (e.key === "Enter") sendChat(); });
 </script>
 </body>
 </html>
