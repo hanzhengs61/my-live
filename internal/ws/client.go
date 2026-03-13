@@ -9,12 +9,16 @@ import (
 
 // Client 代表一个浏览器/WebSocket连接
 type Client struct {
-	conn     *websocket.Conn // 真正的 WebSocket 连接对象
-	send     chan []byte     // 这个客户端要发送的消息队列（缓冲通道）
-	hub      *Hub            // 指向消息中心
-	roomID   string          // 当前所在房间 ID
-	userID   int64           // 用户ID（测试时随便填）
-	nickname string          // 昵称
+	conn   *websocket.Conn // 真正的 WebSocket 连接对象
+	send   chan []byte     // 这个客户端要发送的消息队列（缓冲通道）
+	hub    *Hub            // 指向消息中心
+	roomID string          // 当前所在房间 ID
+
+	// ---------------认证字段---------------
+	UserID   uint   `json:"user_id"`  // 来自 JWT 的 user_id
+	Username string `json:"username"` // 用户名
+	Nickname string `json:"nickname"` // 昵称
+	IsAuthed bool   // 是否已通过认证
 }
 
 // readPump 持续读取客户端发送的消息（也就说浏览器发消息给我们）
@@ -54,19 +58,16 @@ func (c *Client) readPump() {
 			// 切换房间
 			if c.roomID != "" {
 				c.hub.unregister <- c
+				msg.Nickname = c.Nickname
+				c.hub.broadcast <- msg
 			}
 			c.roomID = msg.RoomID
-			c.userID = msg.UserID
-			c.nickname = msg.Nickname
 			// 加入新房间
 			c.hub.register <- c
 			// 广播加入消息
 			c.hub.broadcast <- Message{
-				Type:     TypeJoin,
-				RoomID:   c.roomID,
-				UserID:   c.userID,
-				Nickname: c.nickname,
-				Content:  c.nickname + " 进入直播间",
+				Type:   TypeJoin,
+				RoomID: c.roomID,
 			}
 		case TypeChat, TypeGift:
 			// 普通消息直接广播到本房间

@@ -53,7 +53,7 @@ func (h *Hub) Start() {
 				h.rooms[client.roomID][client] = true
 				h.mu.Unlock()
 				h.broadcastOnlineCount(client.roomID)
-				log.Printf("✅ 用户 %d 加入房间 [%s]，当前房间人数: %d", client.userID, client.roomID, len(h.rooms[client.roomID]))
+				log.Printf("✅ 用户 %d 加入房间 [%s]，当前房间人数: %d", client.UserID, client.roomID, len(h.rooms[client.roomID]))
 
 			// 有客户端断开
 			case client := <-h.unregister:
@@ -68,7 +68,7 @@ func (h *Hub) Start() {
 				}
 				h.mu.Unlock()
 				h.broadcastOnlineCount(client.roomID)
-				log.Printf("❌ 用户 %d 离开房间 [%s]", client.userID, client.roomID)
+				log.Printf("❌ 用户 %d 离开房间 [%s]", client.UserID, client.roomID)
 
 			// 需要广播的消息来了
 			case msg := <-h.broadcast:

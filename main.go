@@ -3,14 +3,41 @@ package main
 import (
 	"fmt"
 	"log"
+	"my-live/config"
+	mydb "my-live/internal/db"
+	"my-live/internal/handler"
+	"my-live/internal/middleware"
+	"my-live/internal/model"
+	"my-live/internal/service"
 	"my-live/internal/ws"
-	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 func main() {
+	// 加载配置
+	cfg := config.LoadConfig()
+
+	// 初始化数据库连接
+	db, err := gorm.Open(postgres.Open(cfg.Database.DSN), &gorm.Config{})
+	if err != nil {
+		log.Fatal("数据库连接失败:", err)
+	}
+
+	// 自动迁移
+	err = db.AutoMigrate(&model.User{}, &model.Room{})
+	if err != nil {
+		log.Fatal("数据库迁移失败:", err)
+	}
+	mydb.InitDB(db)
+	// 创建 auth 服务
+	authSvc := service.NewAuthService(db, cfg)
+	authHandler := handler.NewAuthHandler(authSvc)
+	roomSvc := service.NewRoomService()
+	roomHandler := handler.NewRoomHandler(roomSvc)
+
 	// 启动WebSocket的Hub（消息中心）
 	// Hub会在后台一直运行，负责把消息广播给所有客户端
 	ws.GetHub().Start()
@@ -23,23 +50,17 @@ func main() {
 		ws.WsHandler(c.Writer, c.Request)
 	})
 
-	// 一个测试用的 HTTP 接口（后续扩展用户、房间等）
-	r.GET("/api/health", func(c *gin.Context) {
-		// 可以在这里返回一些基本信息，方便调试
-		onlineRooms := ws.GetHub().Rooms()
-		c.JSON(http.StatusOK, gin.H{
-			"status":       "healthy",
-			"message":      "成人直播系统原型运行中",
-			"online_rooms": onlineRooms,
-			"timestamp":    time.Now().Format(time.DateTime),
-		})
-	})
+	r.POST("/api/register", authHandler.RegisterHandler)
+	r.POST("/api/login", authHandler.LoginHandler)
 
-	port := ":8080"
-	fmt.Printf("服务器启动成功！监听端口 %s\n", port)
-	fmt.Println("WebSocket 地址: ws://localhost:8080/ws")
-	fmt.Println("健康检查: http://localhost:8080/api/health")
-	if err := r.Run(port); err != nil {
-		log.Fatalf("服务器启动失败: %v", err)
+	api := r.Group("/api")
+	api.Use(middleware.AuthMiddleware())
+
+	api.POST("/createRoom", roomHandler.CreateRoom)
+	api.POST("/listRooms", roomHandler.ListRooms)
+
+	fmt.Printf("服务器启动成功！监听端口 %s\n", cfg.Server.Port)
+	if runErr := r.Run(cfg.Server.Port); runErr != nil {
+		log.Fatalf("服务器启动失败: %v", runErr)
 	}
 }

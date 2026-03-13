@@ -1,0 +1,8 @@
+# config.yaml
+server:
+  port: ":8080"
+  jwt_secret: "your-super-long-random-secret-key-2026-change-this-please-very-secure"  # 至少 32 字符以上，生产环境用随机生成
+  jwt_expiry_hours: 168  # 7 天
+
+database:
+  dsn: "host=localhost user=postgres password=secret dbname=my_live port=5432 sslmode=disable TimeZone=Asia/Shanghai"
