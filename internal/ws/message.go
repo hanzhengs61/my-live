@@ -29,7 +29,7 @@ type Message struct {
 }
 
 // ToJSON 把 Message 转换成 JSON 字符串（方便发送）
-func (m *Message) ToJSON() []byte {
+func (m Message) ToJSON() []byte {
 	data, _ := json.Marshal(m)
 	return data
 }

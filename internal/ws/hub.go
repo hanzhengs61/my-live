@@ -110,8 +110,8 @@ func (h *Hub) Start() {
 
 // 礼物限流检查
 func (h *Hub) allowGift(roomID string, userID int64) bool {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
+	h.mu.Lock()
+	defer h.mu.Unlock()
 
 	if h.giftLimit[roomID] == nil {
 		h.giftLimit[roomID] = make(map[int64]time.Time)

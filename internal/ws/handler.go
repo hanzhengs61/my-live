@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
 
@@ -20,7 +21,7 @@ var upgrader = websocket.Upgrader{
 }
 
 // WsHandler WebSocket入口 handler
-func WsHandler(w http.ResponseWriter, r *http.Request) {
+func WsHandler(c *gin.Context, w http.ResponseWriter, r *http.Request) {
 	// 从 query 获取 token
 	tokenStr := r.URL.Query().Get("token")
 	if tokenStr == "" {

@@ -30,7 +30,9 @@ func AuthMiddleware() gin.HandlerFunc {
 		username, _ := (*claims)["username"].(string)
 		c.Set("user_id", uint(userID))
 		c.Set("username", username)
-		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), "gin_context", c))
+		c.Request = c.Request.WithContext(
+			context.WithValue(c.Request.Context(), "gin_context", c),
+		)
 		// 通过，继续执行后续 handler
 		c.Next()
 	}
