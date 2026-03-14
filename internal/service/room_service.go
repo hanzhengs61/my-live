@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"errors"
 	"my-live/internal/db"
 	"my-live/internal/model"
@@ -65,7 +64,7 @@ func (s *RoomService) GetAllRooms(ctx *gin.Context) ([]model.Room, error) {
 }
 
 // VerifyJoinRoom 验证用户是否有权限加入该房间
-func (s *RoomService) VerifyJoinRoom(ctx context.Context, roomID uint, inputPassword string) (*model.Room, error) {
+func (s *RoomService) VerifyJoinRoom(roomID uint, inputPassword string) (*model.Room, error) {
 
 	var room model.Room
 	if err := db.DB.First(&room, roomID).Error; err != nil {

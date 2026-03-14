@@ -3,6 +3,7 @@ package ws
 import (
 	"context"
 	"log"
+	"my-live/internal/model"
 	"my-live/internal/redis"
 	"my-live/internal/service"
 	"strconv"
@@ -11,7 +12,12 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var globalRoomSvc *service.RoomService
+var roomService *service.RoomService
+var chatService *service.ChatService
+
+func InitChatService(svc *service.ChatService) {
+	chatService = svc
+}
 
 // Client 代表一个浏览器/WebSocket连接
 type Client struct {
@@ -79,6 +85,29 @@ func (c *Client) readPump() {
 
 		switch msg.Type {
 		case TypeJoin:
+			// 获取最近20条聊天记录
+			if chatService != nil {
+
+				roomID, _ := strconv.ParseInt(c.roomID, 10, 64)
+
+				list, err := chatService.GetRecentMessages(context.Background(), roomID, 20)
+				if err == nil {
+
+					for i := len(list) - 1; i >= 0; i-- {
+
+						history := Message{
+							Type:      MessageType(list[i].Type),
+							RoomID:    c.roomID,
+							UserID:    list[i].UserID,
+							Nickname:  list[i].Nickname,
+							Content:   list[i].Content,
+							Timestamp: time.Now().UnixMilli(),
+						}
+
+						c.send <- history.ToJSON()
+					}
+				}
+			}
 			// 1. 获取房间ID
 			roomID, err := strconv.ParseUint(msg.RoomID, 10, 32)
 			if err != nil {
@@ -87,8 +116,7 @@ func (c *Client) readPump() {
 			}
 			// 2. 校验是否能加入
 			password := msg.Content
-			ctx := context.WithValue(context.Background(), "ws_client", c)
-			room, errV := globalRoomSvc.VerifyJoinRoom(ctx, uint(roomID), password)
+			room, errV := roomService.VerifyJoinRoom(uint(roomID), password)
 			if errV != nil {
 				log.Printf("加入房间失败 - roomID=%d, user=%s, err=%v", roomID, c.Nickname, err)
 				c.send <- Message{Type: "error", Content: err.Error()}.ToJSON()
@@ -142,8 +170,26 @@ func (c *Client) readPump() {
 			msg.UserID = int64(c.UserID)
 			msg.Nickname = c.Nickname
 			msg.Timestamp = time.Now().UnixMilli()
-
+			// 广播消息
 			c.hub.broadcast <- msg
+			// 异步保存聊天记录
+			go func(m Message) {
+
+				roomID, _ := strconv.ParseInt(m.RoomID, 10, 64)
+
+				record := model.ChatMessage{
+					RoomID:   roomID,
+					UserID:   m.UserID,
+					Nickname: m.Nickname,
+					Type:     string(m.Type),
+					Content:  m.Content,
+					GiftID:   m.GiftID,
+					GiftName: m.GiftName,
+				}
+				if chatService != nil {
+					_ = chatService.SaveMessage(context.Background(), &record)
+				}
+			}(msg)
 
 		case TypePong:
 			// 客户端回复 pong，不广播

@@ -32,7 +32,7 @@ func main() {
 	}
 
 	// 自动迁移
-	err = dba.AutoMigrate(&model.User{}, &model.Room{})
+	err = dba.AutoMigrate(&model.User{}, &model.Room{}, &model.ChatMessage{})
 	if err != nil {
 		log.Fatal("数据库迁移失败:", err)
 	}
@@ -42,6 +42,8 @@ func main() {
 	authHandler := handler.NewAuthHandler(authSvc)
 	roomSvc := service.NewRoomService()
 	roomHandler := handler.NewRoomHandler(roomSvc)
+	chatSvc := service.NewChatService(dba)
+	ws.InitChatService(chatSvc)
 	globalRoomSvc = roomSvc
 
 	// 启动WebSocket的Hub（消息中心）
