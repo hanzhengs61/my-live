@@ -17,8 +17,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var globalRoomSvc *service.RoomService
-
 func main() {
 	// 加载配置
 	cfg := config.LoadConfig()
@@ -42,9 +40,7 @@ func main() {
 	authHandler := handler.NewAuthHandler(authSvc)
 	roomSvc := service.NewRoomService()
 	roomHandler := handler.NewRoomHandler(roomSvc)
-	chatSvc := service.NewChatService(dba)
-	ws.InitChatService(chatSvc)
-	globalRoomSvc = roomSvc
+	ws.InitServices(roomSvc)
 
 	// 启动WebSocket的Hub（消息中心）
 	// Hub会在后台一直运行，负责把消息广播给所有客户端

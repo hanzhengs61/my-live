@@ -1,9 +1,7 @@
 package ws
 
 import (
-	"context"
 	"log"
-	"my-live/internal/model"
 	"my-live/internal/redis"
 	"my-live/internal/service"
 	"strconv"
@@ -13,10 +11,9 @@ import (
 )
 
 var roomService *service.RoomService
-var chatService *service.ChatService
 
-func InitChatService(svc *service.ChatService) {
-	chatService = svc
+func InitServices(rs *service.RoomService) {
+	roomService = rs
 }
 
 // Client 代表一个浏览器/WebSocket连接
@@ -40,7 +37,7 @@ func (c *Client) readPump() {
 			_ = redis.LeaveRoom(c.roomID, c.UserID)
 
 			c.hub.broadcast <- Message{
-				Type:     "leave",
+				Type:     TypeLeave,
 				RoomID:   c.roomID,
 				Nickname: c.Nickname,
 				Content:  c.Nickname + " 离开了房间",
@@ -48,7 +45,7 @@ func (c *Client) readPump() {
 
 			count, _ := redis.GetOnlineCount(c.roomID)
 			c.hub.broadcast <- Message{
-				Type:        "online",
+				Type:        TypeOnline,
 				RoomID:      c.roomID,
 				OnlineCount: int(count),
 			}
@@ -85,29 +82,6 @@ func (c *Client) readPump() {
 
 		switch msg.Type {
 		case TypeJoin:
-			// 获取最近20条聊天记录
-			if chatService != nil {
-
-				roomID, _ := strconv.ParseInt(c.roomID, 10, 64)
-
-				list, err := chatService.GetRecentMessages(context.Background(), roomID, 20)
-				if err == nil {
-
-					for i := len(list) - 1; i >= 0; i-- {
-
-						history := Message{
-							Type:      MessageType(list[i].Type),
-							RoomID:    c.roomID,
-							UserID:    list[i].UserID,
-							Nickname:  list[i].Nickname,
-							Content:   list[i].Content,
-							Timestamp: time.Now().UnixMilli(),
-						}
-
-						c.send <- history.ToJSON()
-					}
-				}
-			}
 			// 1. 获取房间ID
 			roomID, err := strconv.ParseUint(msg.RoomID, 10, 32)
 			if err != nil {
@@ -172,25 +146,6 @@ func (c *Client) readPump() {
 			msg.Timestamp = time.Now().UnixMilli()
 			// 广播消息
 			c.hub.broadcast <- msg
-			// 异步保存聊天记录
-			go func(m Message) {
-
-				roomID, _ := strconv.ParseInt(m.RoomID, 10, 64)
-
-				record := model.ChatMessage{
-					RoomID:   roomID,
-					UserID:   m.UserID,
-					Nickname: m.Nickname,
-					Type:     string(m.Type),
-					Content:  m.Content,
-					GiftID:   m.GiftID,
-					GiftName: m.GiftName,
-				}
-				if chatService != nil {
-					_ = chatService.SaveMessage(context.Background(), &record)
-				}
-			}(msg)
-
 		case TypePong:
 			// 客户端回复 pong，不广播
 		case TypeLeave:
