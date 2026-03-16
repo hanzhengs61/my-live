@@ -30,7 +30,7 @@ func main() {
 	}
 
 	// 自动迁移
-	err = dba.AutoMigrate(&model.User{}, &model.Room{}, &model.ChatMessage{})
+	err = dba.AutoMigrate(&model.User{}, &model.Room{})
 	if err != nil {
 		log.Fatal("数据库迁移失败:", err)
 	}
