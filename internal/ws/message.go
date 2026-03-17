@@ -23,7 +23,8 @@ type Message struct {
 	Nickname    string      `json:"nickname"`               // 昵称
 	Content     string      `json:"content"`                // 消息内容（弹幕文字、礼物ID等）
 	OnlineCount int         `json:"online_count,omitempty"` // 在线人数
-	GiftID      string      `json:"gift_id,omitempty"`      // 礼物ID（如 "rose"）
+	GiftID      int64       `json:"gift_id,omitempty"`      // 礼物ID（如 "rose"）
+	Count       int         `json:"count,omitempty"`        // 数量
 	GiftName    string      `json:"gift_name,omitempty"`    // 礼物名称（如 "玫瑰"）
 	Timestamp   int64       `json:"timestamp"`              // 时间戳（毫秒）
 }

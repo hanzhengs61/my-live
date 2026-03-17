@@ -1,9 +1,9 @@
 package model
 
 import (
+	"my-live/internal/types"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -16,24 +16,13 @@ type BaseModel struct {
 
 func (b *BaseModel) BeforeCreate(tx *gorm.DB) error {
 	now := time.Now().Unix()
-
-	if gcVal := tx.Statement.Context.Value("gin_context"); gcVal != nil {
-		if gc, ok := gcVal.(*gin.Context); ok && gc != nil {
-			if u, exists := gc.Get("username"); exists {
-				if username, ok := u.(string); ok && username != "" {
-					b.CreatedBy = username
-					b.UpdatedBy = username
-				}
-			}
-		}
-	}
-
 	b.CreatedAt = now
 	b.UpdatedAt = now
-	if b.CreatedBy == "" {
-		b.CreatedBy = "system"
-		b.UpdatedBy = "system"
-	}
+
+	username := types.GetUsernameFromCtx(tx.Statement.Context)
+
+	b.CreatedBy = username
+	b.UpdatedBy = username
 	return nil
 }
 
@@ -41,18 +30,7 @@ func (b *BaseModel) BeforeUpdate(tx *gorm.DB) error {
 	now := time.Now().Unix()
 	b.UpdatedAt = now
 
-	if gcVal := tx.Statement.Context.Value("gin_context"); gcVal != nil {
-		if gc, ok := gcVal.(*gin.Context); ok && gc != nil {
-			if u, exists := gc.Get("username"); exists {
-				if username, ok := u.(string); ok && username != "" {
-					b.UpdatedBy = username
-				}
-			}
-		}
-	}
-
-	if b.UpdatedBy == "" {
-		b.UpdatedBy = "system"
-	}
+	username := types.GetUsernameFromCtx(tx.Statement.Context)
+	b.UpdatedBy = username
 	return nil
 }

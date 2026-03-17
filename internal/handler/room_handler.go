@@ -39,7 +39,8 @@ func (h *RoomHandler) CreateRoom(ctx *gin.Context) {
 		return
 	}
 
-	room, err := h.roomSvc.CreateRoom(ctx, hostID, req)
+	c := ctx.Request.Context()
+	room, err := h.roomSvc.CreateRoom(c, hostID, req)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "创建房间失败: " + err.Error()})
 		return
@@ -49,7 +50,8 @@ func (h *RoomHandler) CreateRoom(ctx *gin.Context) {
 
 // ListRooms 获取房间列表
 func (h *RoomHandler) ListRooms(ctx *gin.Context) {
-	rooms, err := h.roomSvc.GetAllRooms(ctx)
+	c := ctx.Request.Context()
+	rooms, err := h.roomSvc.GetAllRooms(c)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "获取房间列表失败"})
 		return
@@ -58,23 +60,24 @@ func (h *RoomHandler) ListRooms(ctx *gin.Context) {
 }
 
 // GetRoom 获取房间详情
-func (h *RoomHandler) GetRoom(c *gin.Context) {
-	idStr := c.Param("id")
+func (h *RoomHandler) GetRoom(ctx *gin.Context) {
+	idStr := ctx.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		response.BadRequest(c, "无效的房间 ID")
+		response.BadRequest(ctx, "无效的房间 ID")
 		return
 	}
 
+	c := ctx.Request.Context()
 	room, err := h.roomSvc.GetRoom(c, uint(id))
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		response.Error(c, 404, "房间不存在")
+		response.Error(ctx, 404, "房间不存在")
 		return
 	}
 
 	if room.IsPrivate {
 		room.Password = "" // 前端不需要看到密码
 	}
-	response.Success(c, room)
+	response.Success(ctx, room)
 }

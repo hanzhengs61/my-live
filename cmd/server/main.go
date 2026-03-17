@@ -30,13 +30,13 @@ func main() {
 	}
 
 	// 自动迁移
-	err = dba.AutoMigrate(&model.User{}, &model.Room{})
+	err = dba.AutoMigrate(&model.User{}, &model.Room{}, &model.Gift{}, &model.Transaction{})
 	if err != nil {
 		log.Fatal("数据库迁移失败:", err)
 	}
 	db.Init(dba)
 	// 创建 auth 服务
-	authSvc := service.NewAuthService(dba, cfg)
+	authSvc := service.NewAuthService(cfg)
 	authHandler := handler.NewAuthHandler(authSvc)
 	roomSvc := service.NewRoomService()
 	roomHandler := handler.NewRoomHandler(roomSvc)
@@ -48,6 +48,8 @@ func main() {
 
 	// 创建 gin 引擎（默认待 Logger 和 Recovery 中间件）
 	r := gin.Default()
+	// 跨域
+	r.Use(middleware.CorsMiddleware())
 
 	// 注册 WebSocket 路由
 	r.GET("/ws", func(c *gin.Context) {

@@ -28,7 +28,8 @@ func (h *AuthHandler) RegisterHandler(ctx *gin.Context) {
 		return
 	}
 	// 注册
-	err := h.authSvc.Register(ctx, r)
+	c := ctx.Request.Context()
+	err := h.authSvc.Register(c, r)
 	if err != nil {
 		if errors.Is(err, service.ErrUsernameExists) {
 			ctx.JSON(http.StatusConflict, gin.H{"error": "用户名已存在"})
@@ -42,7 +43,7 @@ func (h *AuthHandler) RegisterHandler(ctx *gin.Context) {
 
 // LoginHandler 登录
 func (h *AuthHandler) LoginHandler(ctx *gin.Context) {
-	var r request.CreateUserReq
+	var r request.LoginReq
 	if err := ctx.ShouldBindJSON(&r); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

@@ -1,13 +1,12 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"my-live/internal/db"
 	"my-live/internal/model"
 	"my-live/internal/request"
-	"my-live/internal/response"
 
-	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -28,7 +27,7 @@ var (
 )
 
 // CreateRoom 创建房间
-func (s *RoomService) CreateRoom(ctx *gin.Context, hostID uint, req request.CreateRoomReq) (*model.Room, error) {
+func (s *RoomService) CreateRoom(ctx context.Context, hostID uint, req request.CreateRoomReq) (*model.Room, error) {
 
 	if req.Title == "" {
 		return nil, errors.New("房间标题不能为空")
@@ -47,7 +46,7 @@ func (s *RoomService) CreateRoom(ctx *gin.Context, hostID uint, req request.Crea
 		Status:      "waiting",
 	}
 
-	if err := db.DB.WithContext(ctx.Request.Context()).Create(room).Error; err != nil {
+	if err := db.DB.WithContext(ctx).Create(room).Error; err != nil {
 		return nil, err
 	}
 
@@ -55,9 +54,9 @@ func (s *RoomService) CreateRoom(ctx *gin.Context, hostID uint, req request.Crea
 }
 
 // GetAllRooms 获取当前所有可见房间列表
-func (s *RoomService) GetAllRooms(ctx *gin.Context) ([]model.Room, error) {
+func (s *RoomService) GetAllRooms(ctx context.Context) ([]model.Room, error) {
 	var rooms []model.Room
-	err := db.DB.WithContext(ctx.Request.Context()).Where("status IN ?", []string{"waiting", "live"}).
+	err := db.DB.WithContext(ctx).Where("status IN ?", []string{"waiting", "live"}).
 		Order("created_at desc").
 		Find(&rooms).Error
 	return rooms, err
@@ -83,13 +82,13 @@ func (s *RoomService) VerifyJoinRoom(roomID uint, inputPassword string) (*model.
 }
 
 // GetRoom 获取房间信息
-func (s *RoomService) GetRoom(ctx *gin.Context, roomID uint) (*model.Room, error) {
+func (s *RoomService) GetRoom(ctx context.Context, roomID uint) (*model.Room, error) {
 	var room model.Room
-	if err := db.DB.WithContext(ctx.Request.Context()).First(&room, roomID).Error; err != nil {
+	if err := db.DB.WithContext(ctx).First(&room, roomID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			response.Error(ctx, 404, "房间不存在")
+			return nil, ErrRoomNotFound
 		}
-		response.Error(ctx, 500, "查询失败")
+		return nil, err
 	}
 	return &room, nil
 }

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"my-live/config"
 	"my-live/internal/db"
@@ -11,7 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 var (
@@ -25,17 +25,17 @@ type AuthService struct {
 }
 
 // NewAuthService 创建服务实例
-func NewAuthService(db *gorm.DB, cfg *config.Config) *AuthService {
+func NewAuthService(cfg *config.Config) *AuthService {
 	return &AuthService{
 		config: cfg,
 	}
 }
 
 // Register 注册
-func (s *AuthService) Register(ctx *gin.Context, r request.CreateUserReq) error {
+func (s *AuthService) Register(ctx context.Context, r request.CreateUserReq) error {
 	// 检查用户名是否存在
 	var count int64
-	db.DB.WithContext(ctx.Request.Context()).Model(&model.User{}).Where("username = ?", r.Username).Count(&count)
+	db.DB.WithContext(ctx).Model(&model.User{}).Where("username = ?", r.Username).Count(&count)
 	if count > 0 {
 		return ErrUsernameExists
 	}
@@ -53,16 +53,16 @@ func (s *AuthService) Register(ctx *gin.Context, r request.CreateUserReq) error 
 		Email:        r.Email,
 	}
 
-	if err := db.DB.WithContext(ctx.Request.Context()).Debug().Create(user).Error; err != nil {
+	if err := db.DB.WithContext(ctx).Debug().Create(user).Error; err != nil {
 		return err
 	}
 	return nil
 }
 
 // Login 登录，返回 token 和用户信息
-func (s *AuthService) Login(ctx *gin.Context, r request.CreateUserReq) (string, error) {
+func (s *AuthService) Login(ctx *gin.Context, r request.LoginReq) (string, error) {
 	var user model.User
-	if err := db.DB.WithContext(ctx.Request.Context()).Where("username = ?", r.Username).First(&user).Error; err != nil {
+	if err := db.DB.WithContext(ctx).Where("username = ?", r.Username).First(&user).Error; err != nil {
 		return "", ErrInvalidCredentials
 	}
 

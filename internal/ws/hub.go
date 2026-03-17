@@ -72,13 +72,6 @@ func (h *Hub) Start() {
 
 			// 需要广播的消息来了
 			case msg := <-h.broadcast:
-				// 礼物限流，如果超过1秒1个，直接丢弃不广播
-				if msg.Type == TypeGift {
-					if !h.allowGift(msg.RoomID, msg.UserID) {
-						log.Printf("❌ 礼物限流: 用户 %d 在房间 %s 被限流", msg.UserID, msg.RoomID)
-						continue
-					}
-				}
 
 				// 把这条消息发送给每一个在线客户端
 				h.mu.RLock()

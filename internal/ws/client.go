@@ -2,19 +2,10 @@ package ws
 
 import (
 	"log"
-	"my-live/internal/redis"
-	"my-live/internal/service"
-	"strconv"
 	"time"
 
 	"github.com/gorilla/websocket"
 )
-
-var roomService *service.RoomService
-
-func InitServices(rs *service.RoomService) {
-	roomService = rs
-}
 
 // Client 代表一个浏览器/WebSocket连接
 type Client struct {
@@ -34,22 +25,6 @@ type Client struct {
 func (c *Client) readPump() {
 	defer func() {
 		if c.roomID != "" {
-			_ = redis.LeaveRoom(c.roomID, c.UserID)
-
-			c.hub.broadcast <- Message{
-				Type:     TypeLeave,
-				RoomID:   c.roomID,
-				Nickname: c.Nickname,
-				Content:  c.Nickname + " 离开了房间",
-			}
-
-			count, _ := redis.GetOnlineCount(c.roomID)
-			c.hub.broadcast <- Message{
-				Type:        TypeOnline,
-				RoomID:      c.roomID,
-				OnlineCount: int(count),
-			}
-
 			c.hub.unregister <- c
 		}
 		_ = c.conn.Close()
@@ -65,10 +40,7 @@ func (c *Client) readPump() {
 	for {
 		_, data, err := c.conn.ReadMessage()
 		if err != nil {
-			// 判断是否是正常关闭（浏览器关闭页面就是1001）
-			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) ||
-				websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) == false {
-				// 正常关闭，不打印错误日志
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 				return
 			}
 			log.Printf("读取错误: %v", err)
@@ -80,94 +52,8 @@ func (c *Client) readPump() {
 			continue
 		}
 
-		switch msg.Type {
-		case TypeJoin:
-			// 1. 获取房间ID
-			roomID, err := strconv.ParseUint(msg.RoomID, 10, 32)
-			if err != nil {
-				c.send <- Message{Type: "error", Content: "无效的房间 ID"}.ToJSON()
-				continue
-			}
-			// 2. 校验是否能加入
-			password := msg.Content
-			room, errV := roomService.VerifyJoinRoom(uint(roomID), password)
-			if errV != nil {
-				log.Printf("加入房间失败 - roomID=%d, user=%s, err=%v", roomID, c.Nickname, err)
-				c.send <- Message{Type: "error", Content: err.Error()}.ToJSON()
-				continue
-			}
-
-			// 如果之前在房间，先退出
-			if c.roomID != "" {
-				c.hub.unregister <- c
-			}
-
-			// 设置新房间
-			c.roomID = msg.RoomID
-
-			// 注册到 Hub
-			c.hub.register <- c
-
-			// Redis 记录在线
-			_ = redis.JoinRoom(c.roomID, c.UserID)
-
-			// 广播加入
-			c.hub.broadcast <- Message{
-				Type:      TypeJoin,
-				RoomID:    c.roomID,
-				UserID:    int64(c.UserID),
-				Nickname:  c.Nickname,
-				Content:   c.Nickname + " 进入了房间",
-				Timestamp: time.Now().UnixMilli(),
-			}
-
-			// 给自己发欢迎消息
-			c.send <- Message{
-				Type:      "system",
-				RoomID:    c.roomID,
-				Nickname:  c.Nickname,
-				Content:   "欢迎来到《" + room.Title + "》",
-				Timestamp: time.Now().UnixMilli(),
-			}.ToJSON()
-
-		case TypeChat, TypeGift:
-			if c.roomID == "" {
-				c.send <- Message{
-					Type:      "error",
-					Content:   "请先加入房间才能发送消息",
-					Timestamp: time.Now().UnixMilli(),
-				}.ToJSON()
-				continue
-			}
-
-			msg.RoomID = c.roomID
-			msg.UserID = int64(c.UserID)
-			msg.Nickname = c.Nickname
-			msg.Timestamp = time.Now().UnixMilli()
-			// 广播消息
-			c.hub.broadcast <- msg
-		case TypePong:
-			// 客户端回复 pong，不广播
-		case TypeLeave:
-			if c.roomID == "" {
-				c.send <- Message{Type: "error", Content: "当前不在任何房间"}.ToJSON()
-				continue
-			}
-
-			_ = redis.LeaveRoom(c.roomID, c.UserID)
-
-			c.hub.broadcast <- Message{
-				Type:      TypeLeave,
-				RoomID:    c.roomID,
-				UserID:    int64(c.UserID),
-				Nickname:  c.Nickname,
-				Content:   c.Nickname + " 离开了房间",
-				Timestamp: time.Now().UnixMilli(),
-			}
-
-			c.hub.unregister <- c
-			c.roomID = ""
-		}
+		// 所有业务逻辑交给 business 层处理
+		HandleMessage(c, msg)
 	}
 }
 
@@ -202,4 +88,8 @@ func (c *Client) writePump() {
 			}
 		}
 	}
+}
+
+func (c *Client) GetUsername() string {
+	return c.Username
 }
