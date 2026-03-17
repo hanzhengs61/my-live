@@ -126,6 +126,8 @@ func handleJoin(c *Client, msg Message) {
 		Content:   "欢迎来到《" + room.Title + "》",
 		Timestamp: time.Now().UnixMilli(),
 	}.ToJSON()
+	// 广播用户列表更新
+	c.hub.broadcastUserList(c.roomID)
 }
 
 func handleChat(c *Client, msg Message) {
@@ -206,4 +208,7 @@ func handleLeave(c *Client) {
 
 	c.hub.unregister <- c
 	c.roomID = ""
+
+	// 广播用户列表更新
+	c.hub.broadcastUserList(c.roomID)
 }

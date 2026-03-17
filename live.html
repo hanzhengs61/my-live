@@ -146,6 +146,17 @@
             border-left: 4px solid #00acc1;
             color: #006064;
         }
+
+        #userList div {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #444;
+            transition: background 0.2s;
+        }
+
+        #userList div:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
     </style>
 </head>
 <body>
@@ -173,10 +184,12 @@
             <button onclick="joinRoom()">加入房间</button>
             <button onclick="leaveRoom()">离开房间</button>
             <br><br>
-            在线人数： <span id="online">0</span>
             <br>
-            当前房间： <span id="currentRoom">无</span>
+            当前房间： <span id="currentRoom">无</span><br>
+            在线用户 (<span id="online">0</span>)
+            <div id="userList" style="max-height:400px; overflow-y:auto; font-size:14px;"></div>
         </div>
+
 
         <div class="panel">
             <input id="msg" placeholder="输入弹幕..." style="width:500px">
@@ -307,6 +320,7 @@
         ws.onmessage = (e) => {
             try {
                 const msg = JSON.parse(e.data);
+                console.log("收到消息:", msg);
                 switch (msg.type) {
                     case "join":
                         log(msg.nickname + " 进入房间", "join");
@@ -334,14 +348,47 @@
                             effectClass += " car";
                             emoji = "🏎️";
                         }
-                        showGiftEffect(emoji,msg.nickname, msg.content);
+                        showGiftEffect(emoji, msg.nickname, msg.content);
                         log(emoji + " " + msg.nickname + msg.content, "gift");
                         break;
                     case "private_chat":
                         log("📩 [私聊] " + msg.nickname + " : " + msg.content, "private");
                         break;
-                    case "online":
-                        document.getElementById("online").innerText = msg.online_count;
+                    case "user_list":
+                        document.getElementById("online").innerText = msg.online_count || 0;
+
+                        const userListDiv = document.getElementById("userList");
+                        if (!userListDiv) {
+                            console.error("找不到 #userList 元素！");
+                            break;
+                        }
+
+                        userListDiv.innerHTML = "";
+
+                        if (msg.extra && Array.isArray(msg.extra)) {
+                            msg.extra.forEach(user => {
+                                const div = document.createElement("div");
+                                div.style.padding = "10px";
+                                div.style.cursor = "pointer";
+                                div.style.borderBottom = "1px solid #555";
+                                div.innerHTML = `👤 ${user.nickname || user.username || "匿名用户"}`;
+
+                                div.onclick = () => {
+                                    const text = prompt(`给 ${user.nickname || user.username} 发送私信：`);
+                                    if (text && text.trim()) {
+                                        ws.send(JSON.stringify({
+                                            type: "private_chat",
+                                            room_id: currentRoom,
+                                            target_id: user.user_id,
+                                            content: text.trim()
+                                        }));
+                                    }
+                                };
+                                userListDiv.appendChild(div);
+                            });
+                        } else {
+                            userListDiv.innerHTML = "<div style='color:#888;padding:10px;'>暂无在线用户</div>";
+                        }
                         break;
                     case "system":
                         log(msg.content, "system");
@@ -430,7 +477,7 @@
     // 礼物特效
     let giftMap = {}; // key = sender+gift
 
-    function showGiftEffect(emoji,sender, gift) {
+    function showGiftEffect(emoji,sender,gift) {
         const eff = document.createElement("div");
         eff.className = "gift-effect";
         eff.innerHTML = `${emoji} ${gift}`;

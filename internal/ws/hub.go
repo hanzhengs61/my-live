@@ -143,9 +143,52 @@ func (h *Hub) broadcastOnlineCount(roomID string) {
 	h.broadcast <- onlineMsg
 }
 
-// Rooms 返回当前所有房间数量（用于调试 / 监控）
-func (h *Hub) Rooms() int {
+// 广播到指定房间所有客户端
+func (h *Hub) broadcastToRoom(roomID string, message []byte) {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return len(h.rooms)
+	clients, ok := h.rooms[roomID]
+	if !ok {
+		h.mu.RUnlock()
+		return
+	}
+
+	for client := range clients {
+		select {
+		case client.send <- message:
+		default:
+			close(client.send)
+			delete(clients, client)
+		}
+	}
+	h.mu.RUnlock()
+}
+
+// 广播当前房间的用户列表
+func (h *Hub) broadcastUserList(roomID string) {
+	h.mu.RLock()
+	clients, ok := h.rooms[roomID]
+	if !ok {
+		h.mu.RUnlock()
+		return
+	}
+
+	userList := make([]map[string]interface{}, 0, len(clients))
+	for client := range clients {
+		userList = append(userList, map[string]interface{}{
+			"user_id":  client.UserID,
+			"nickname": client.Nickname,
+			"username": client.Username,
+		})
+	}
+	h.mu.RUnlock()
+
+	msg := Message{
+		Type:        "user_list",
+		RoomID:      roomID,
+		OnlineCount: len(userList),
+		Extra:       userList,
+		Timestamp:   time.Now().UnixMilli(),
+	}
+
+	h.broadcastToRoom(roomID, msg.ToJSON())
 }

@@ -29,6 +29,7 @@ type Message struct {
 	Count       int         `json:"count,omitempty"`        // 数量
 	GiftName    string      `json:"gift_name,omitempty"`    // 礼物名称（如 "玫瑰"）
 	Timestamp   int64       `json:"timestamp"`              // 时间戳（毫秒）
+	Extra       interface{} `json:"extra,omitempty"`
 }
 
 // ToJSON 把 Message 转换成 JSON 字符串（方便发送）
