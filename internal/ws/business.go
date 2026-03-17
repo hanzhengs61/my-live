@@ -27,11 +27,57 @@ func HandleMessage(c *Client, msg Message) {
 		handleGift(c, msg)
 	case TypeLeave:
 		handleLeave(c)
-	case TypePong:
-		// 心跳
+	case TypePong: // 心跳
+	case TypePrivateChat:
+		handlePrivateChat(c, msg)
 	default:
 		log.Printf("未知消息类型: %s", msg.Type)
 	}
+}
+
+func handlePrivateChat(c *Client, msg Message) {
+	if c.roomID == "" {
+		c.send <- Message{Type: "error", Content: "请先加入房间"}.ToJSON()
+		return
+	}
+
+	targetUserID := msg.TargetID
+	if targetUserID <= 0 {
+		c.send <- Message{Type: "error", Content: "无效的目标用户 ID"}.ToJSON()
+		return
+	}
+
+	// 构造私聊消息（只发给目标用户）
+	privateMsg := Message{
+		Type:      TypePrivateChat,
+		RoomID:    c.roomID,
+		UserID:    int64(c.UserID),
+		Nickname:  c.Nickname,
+		Content:   msg.Content,
+		TargetID:  targetUserID,
+		Timestamp: time.Now().UnixMilli(),
+	}
+
+	found := false
+	c.hub.mu.RLock()
+	for client := range c.hub.rooms[c.roomID] {
+		if client.UserID == uint(targetUserID) {
+			client.send <- privateMsg.ToJSON()
+			found = true
+			break
+		}
+	}
+	c.hub.mu.RUnlock()
+	if !found {
+		c.send <- Message{Type: "error", Content: "目标用户不在当前房间"}.ToJSON()
+		return
+	}
+
+	c.send <- Message{
+		Type:      "system",
+		Content:   "私聊消息:" + privateMsg.Content,
+		Timestamp: time.Now().UnixMilli(),
+	}.ToJSON()
 }
 
 // ==================== 具体业务处理 ====================

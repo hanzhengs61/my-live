@@ -140,6 +140,12 @@
                 transform: translateY(-200px) scale(1);
             }
         }
+
+        .private {
+            background: #e0f7fa;
+            border-left: 4px solid #00acc1;
+            color: #006064;
+        }
     </style>
 </head>
 <body>
@@ -175,12 +181,35 @@
         <div class="panel">
             <input id="msg" placeholder="输入弹幕..." style="width:500px">
             <button onclick="sendChat()">发送弹幕</button>
-            <button onclick="sendGift()">送礼物</button>
+            <button onclick="sendGift(1,1)">送礼物</button>
+            <button onclick="document.getElementById('giftPanel').style.display='block'">更多礼物</button>
+        </div>
+
+        <!-- 礼物面板（可折叠或弹窗） -->
+        <div class="panel" id="giftPanel" style="display:none;">
+            <h3>选择礼物</h3>
+            <div style="display:flex; flex-wrap:wrap; gap:10px;">
+                <button onclick="sendGift(1,1)">玫瑰 x1 (10币)</button>
+                <button onclick="sendGift(1,10)">玫瑰 x10 (100币)</button>
+                <button onclick="sendGift(1,66)">玫瑰 x66 (660币)</button>
+                <button onclick="sendGift(2,1)">爱心 x1 (20币)</button>
+                <button onclick="sendGift(3,1)">火箭 x1 (300币)</button>
+                <button onclick="sendGift(4,1)">跑车 x1 (1314币)</button>
+            </div>
+            <br>
+            <button onclick="document.getElementById('giftPanel').style.display='none'">关闭</button>
         </div>
 
         <div class="panel">
             <h3>聊天记录</h3>
             <div id="chat"></div>
+        </div>
+
+        <div class="panel">
+            <h3>私信</h3>
+            <input id="privateTarget" placeholder="对方用户 ID" style="width:150px">
+            <input id="privateMsg" placeholder="私信内容" style="width:300px">
+            <button onclick="sendPrivate()">发送私信</button>
         </div>
     </div>
 
@@ -234,7 +263,7 @@
                 return;
             }
 
-            if(data.code === 0 && data.data){
+            if (data.code === 0 && data.data) {
                 token = data.data;  // <- 注意是 data.data 而不是 data.token
                 localStorage.setItem("token", token);
                 alert(isLogin ? "登录成功" : "注册成功");
@@ -243,7 +272,7 @@
                 document.getElementById("livePanel").style.display = "block";
 
                 connectWS();  // 自动连接 WebSocket
-            }else{
+            } else {
                 alert(data.message || "登录失败");
             }
 
@@ -291,8 +320,10 @@
                         break;
                     case "gift":
                         log(`🎁 ${msg.nickname} 送出 ${msg.content}`, "gift");
-                        console.log("收到:", msg.nickname)
-                        showGiftEffect(msg.nickname, msg.content);
+                        showGiftEffect(msg.nickname, msg.content); // 只保留特效
+                        break;
+                    case "private_chat":
+                        log("📩 [私聊] " + msg.nickname + " : " + msg.content, "private");
                         break;
                     case "online":
                         document.getElementById("online").innerText = msg.online_count;
@@ -385,84 +416,60 @@
     let giftMap = {}; // key = sender+gift
 
     function showGiftEffect(sender, gift) {
-        // 使用 sender + gift 作为唯一标识，确保合并
-        const key = sender + "_" + gift;
+        const eff = document.createElement("div");
+        eff.className = "gift-effect";
+        eff.innerHTML = `🎁 ${gift}`;
+        eff.style.left = (30 + Math.random() * 40) + "%";
+        eff.style.top = (50 + Math.random() * 20) + "%";
+        document.body.appendChild(eff);
 
-        // 调试：查看 key 是什么，方便排查为什么没匹配到
-        console.log("当前 key:", key, "giftMap是否存在:", !!giftMap[key]);
-
-        if (giftMap[key]) {
-            // -&#45;&#45; 情况 A：匹配到已有记录，更新数字 -&#45;&#45;
-            giftMap[key].count++;
-            // 核心：更新同一个 DOM 元素
-            giftMap[key].elem.innerHTML = `🎁 ${sender} 送出 ${gift} ×${giftMap[key].count}`;
-
-            // 重置计时器，防止记录过早消失
-            clearTimeout(giftMap[key].timer);
-            startAutoRemoveTimer(key);
-        } else {
-            // -&#45;&#45; 情况 B：没有匹配到，创建新行 -&#45;&#45;
-            const chat = document.getElementById("chat");
-            const div = document.createElement("div");
-            div.className = "msg gift";
-            div.innerHTML = `🎁 ${sender} 送出 ${gift} ×1`;
-            chat.appendChild(div);
-
-            giftMap[key] = {
-                count: 1,
-                elem: div,
-                timer: null
-            };
-
-            startAutoRemoveTimer(key);
-        }
+        setTimeout(() => eff.remove(), 2000);
 
         // 保持滚动到底部
         document.getElementById("chat").scrollTop = document.getElementById("chat").scrollHeight;
     }
 
-    function startAutoRemoveTimer(key) {
-        if (giftMap[key].timer) clearTimeout(giftMap[key].timer);
+    function sendGift(giftID, count) {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return alert("WebSocket 未连接");
+        if (!currentRoom) return alert("请先加入房间");
 
-        giftMap[key].timer = setTimeout(() => {
-            if (giftMap[key] && giftMap[key].elem) {
-                giftMap[key].elem.remove();
-            }
-            delete giftMap[key]; // 清理状态
-        }, 3000); // 3秒后消失
+        ws.send(JSON.stringify({
+            type: "gift",
+            room_id: currentRoom,
+            gift_id: giftID,
+            count: count
+        }));
+
+        log("礼物发送请求已发出（ID:" + giftID + " x" + count + "）", "system");
     }
 
-    // 礼物发送
-    let giftQueue = [];
-    let sending = false;
+    function sendPrivate() {
+        const targetID = document.getElementById("privateTarget").value.trim();
+        const text = document.getElementById("privateMsg").value.trim();
 
-    function sendGift() {
-        giftQueue.push(1);
-        processGiftQueue();
-    }
-
-    function processGiftQueue() {
-        if (sending) return;
-        if (giftQueue.length === 0) return;
-        sending = true;
-        giftQueue.shift();
-        if (!ws || ws.readyState !== WebSocket.OPEN || !currentRoom) {
-            sending = false;
+        if (!targetID || !text) {
+            alert("请输入对方ID和内容");
             return;
         }
-        ws.send(JSON.stringify({type: "gift", room_id: currentRoom, gift_id: 1, count: 1}));
-        setTimeout(() => {
-            sending = false;
-            processGiftQueue();
-        }, 300);
+
+        if (!ws || ws.readyState !== WebSocket.OPEN) return alert("WebSocket 未连接");
+        if (!currentRoom) return alert("请先加入房间");
+
+        ws.send(JSON.stringify({
+            type: "private_chat",
+            room_id: currentRoom,
+            target_id: parseInt(targetID),
+            content: text
+        }));
+        document.getElementById("privateMsg").value = "";
     }
 
-    window.addEventListener("load", ()=>{
+    window.addEventListener("load", () => {
         const savedToken = localStorage.getItem("token");
-        if(savedToken){
+        if (savedToken) {
             token = savedToken;
-            document.getElementById("authBox").style.display="none";
-            document.getElementById("livePanel").style.display="block";
+            document.getElementById("authBox").style.display = "none";
+            document.getElementById("livePanel").style.display = "block";
             connectWS();
         }
     });

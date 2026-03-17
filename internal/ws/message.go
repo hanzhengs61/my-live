@@ -6,13 +6,14 @@ import "encoding/json"
 type MessageType string
 
 const (
-	TypeJoin   MessageType = "join"   // 加入房间
-	TypeChat   MessageType = "chat"   // 普通弹幕/聊天
-	TypeGift   MessageType = "gift"   // 礼物特效
-	TypeLeave  MessageType = "leave"  // 离开房间
-	TypePing   MessageType = "ping"   // 心跳ping（服务器发）
-	TypePong   MessageType = "pong"   // 心跳pong（客户端回复）
-	TypeOnline MessageType = "online" // 在线人数
+	TypeJoin        MessageType = "join"         // 加入房间
+	TypeChat        MessageType = "chat"         // 普通弹幕/聊天
+	TypeGift        MessageType = "gift"         // 礼物特效
+	TypeLeave       MessageType = "leave"        // 离开房间
+	TypePing        MessageType = "ping"         // 心跳ping（服务器发）
+	TypePong        MessageType = "pong"         // 心跳pong（客户端回复）
+	TypeOnline      MessageType = "online"       // 在线人数
+	TypePrivateChat MessageType = "private_chat" // 私信
 )
 
 // Message 是所有WebSocket消息的统一结构（JSON结构）
@@ -20,6 +21,7 @@ type Message struct {
 	Type        MessageType `json:"type"`                   // 消息类型
 	RoomID      string      `json:"room_id"`                // 房间ID（直播间唯一标识）
 	UserID      int64       `json:"user_id"`                // 用户 ID
+	TargetID    int64       `json:"target_id,omitempty"`    // 接收用户 ID
 	Nickname    string      `json:"nickname"`               // 昵称
 	Content     string      `json:"content"`                // 消息内容（弹幕文字、礼物ID等）
 	OnlineCount int         `json:"online_count,omitempty"` // 在线人数
