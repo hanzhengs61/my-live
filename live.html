@@ -319,8 +319,23 @@
                         log(`<b>${msg.nickname}</b>：${msg.content}`, "chat");
                         break;
                     case "gift":
-                        log(`🎁 ${msg.nickname} 送出 ${msg.content}`, "gift");
-                        showGiftEffect(msg.nickname, msg.content); // 只保留特效
+                        let effectClass = "gift-effect";
+                        let emoji = "🎁";
+                        if (msg.content.includes("玫瑰")) {
+                            effectClass += " rose";
+                            emoji = "🌹";
+                        } else if (msg.content.includes("爱心")) {
+                            effectClass += " heart";
+                            emoji = "❤️";
+                        } else if (msg.content.includes("火箭")) {
+                            effectClass += " rocket";
+                            emoji = "🚀";
+                        } else if (msg.content.includes("跑车")) {
+                            effectClass += " car";
+                            emoji = "🏎️";
+                        }
+                        showGiftEffect(emoji,msg.nickname, msg.content);
+                        log(emoji + " " + msg.nickname + msg.content, "gift");
                         break;
                     case "private_chat":
                         log("📩 [私聊] " + msg.nickname + " : " + msg.content, "private");
@@ -415,15 +430,13 @@
     // 礼物特效
     let giftMap = {}; // key = sender+gift
 
-    function showGiftEffect(sender, gift) {
+    function showGiftEffect(emoji,sender, gift) {
         const eff = document.createElement("div");
         eff.className = "gift-effect";
-        eff.innerHTML = `🎁 ${gift}`;
+        eff.innerHTML = `${emoji} ${gift}`;
         eff.style.left = (30 + Math.random() * 40) + "%";
         eff.style.top = (50 + Math.random() * 20) + "%";
         document.body.appendChild(eff);
-
-        setTimeout(() => eff.remove(), 2000);
 
         // 保持滚动到底部
         document.getElementById("chat").scrollTop = document.getElementById("chat").scrollHeight;
@@ -439,8 +452,6 @@
             gift_id: giftID,
             count: count
         }));
-
-        log("礼物发送请求已发出（ID:" + giftID + " x" + count + "）", "system");
     }
 
     function sendPrivate() {

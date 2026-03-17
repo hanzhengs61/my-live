@@ -148,15 +148,16 @@ func handleGift(c *Client, msg Message) {
 		return
 	}
 
-	count := int64(1)
-	if msg.Count > 0 {
-		count = int64(msg.Count)
+	giftID := msg.GiftID
+	count := msg.Count
+	if count <= 0 {
+		count = 1
 	}
 	roomIDInt, _ := strconv.ParseInt(c.roomID, 10, 64)
 	req := request.SendGiftReq{
 		RoomID: roomIDInt,
-		GiftID: msg.GiftID,
-		Count:  count,
+		GiftID: giftID,
+		Count:  int64(count),
 	}
 	giftSvc := service.NewGiftService()
 	ctx := context.WithValue(context.Background(), "auditor", c)
@@ -173,7 +174,8 @@ func handleGift(c *Client, msg Message) {
 			RoomID:    c.roomID,
 			UserID:    int64(c.UserID),
 			Nickname:  c.Nickname,
-			Content:   giftName,
+			GiftID:    giftID,
+			Content:   "送出礼物" + giftName + " x" + strconv.FormatInt(int64(count), 10),
 			Timestamp: time.Now().UnixMilli(),
 		}
 	}()
