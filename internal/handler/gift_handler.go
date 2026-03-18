@@ -24,7 +24,7 @@ func (h *GiftHandler) SendGift(c *gin.Context) {
 		response.Error(c, http.StatusUnauthorized, "请先登录")
 		return
 	}
-	userID := userId.(int64)
+	userID := userId.(uint)
 
 	var req request.SendGiftReq
 	if err := c.ShouldBindJSON(&req); err != nil {

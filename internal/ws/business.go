@@ -2,6 +2,7 @@ package ws
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"my-live/internal/redis"
 	"my-live/internal/request"
@@ -10,7 +11,9 @@ import (
 	"time"
 )
 
-var roomService *service.RoomService
+var (
+	roomService *service.RoomService
+)
 
 func InitServices(rs *service.RoomService) {
 	roomService = rs
@@ -30,10 +33,20 @@ func HandleMessage(c *Client, msg Message) {
 	case TypePong: // 心跳
 	case TypePrivateChat:
 		handlePrivateChat(c, msg)
+	case TypeRoomUpdate:
+		handleRoomUpdate(c, msg)
+	case TypeBanUser:
+		handleBanUser(c, msg)
+	case TypeKickUser:
+		handleKickUser(c, msg)
+	case TypeCloseRoom:
+		handleCloseRoom(c, msg)
 	default:
 		log.Printf("未知消息类型: %s", msg.Type)
 	}
 }
+
+// ==================== 具体业务处理 ====================
 
 func handlePrivateChat(c *Client, msg Message) {
 	if c.roomID == "" {
@@ -80,8 +93,6 @@ func handlePrivateChat(c *Client, msg Message) {
 	}.ToJSON()
 }
 
-// ==================== 具体业务处理 ====================
-
 func handleJoin(c *Client, msg Message) {
 	roomIDUint, err := strconv.ParseUint(msg.RoomID, 10, 32)
 	if err != nil {
@@ -125,9 +136,21 @@ func handleJoin(c *Client, msg Message) {
 		Type:      "system",
 		Content:   "欢迎来到《" + room.Title + "》",
 		Timestamp: time.Now().UnixMilli(),
+		IsHost:    room.HostID == int64(c.UserID),
 	}.ToJSON()
 	// 广播用户列表更新
 	c.hub.broadcastUserList(c.roomID)
+	// 广播最新礼物排行榜
+	rankSvc := service.NewRankService()
+	roomIDInt, _ := strconv.ParseInt(c.roomID, 10, 64)
+	ctx := context.WithValue(context.Background(), "auditor", c)
+	rankList, _ := rankSvc.GetTopGiftRank(ctx, roomIDInt, 5)
+	c.hub.broadcast <- Message{
+		Type:      "gift_rank",
+		RoomID:    c.roomID,
+		Extra:     rankList,
+		Timestamp: time.Now().UnixMilli(),
+	}
 }
 
 func handleChat(c *Client, msg Message) {
@@ -163,7 +186,7 @@ func handleGift(c *Client, msg Message) {
 	}
 	giftSvc := service.NewGiftService()
 	ctx := context.WithValue(context.Background(), "auditor", c)
-	giftName, err := giftSvc.SendGift(ctx, int64(c.UserID), req)
+	giftName, err := giftSvc.SendGift(ctx, c.UserID, req)
 	if err != nil {
 		c.send <- Message{Type: "error", Content: err.Error()}.ToJSON()
 		return
@@ -181,6 +204,16 @@ func handleGift(c *Client, msg Message) {
 			Timestamp: time.Now().UnixMilli(),
 		}
 	}()
+
+	// 广播最新礼物排行榜
+	rankSvc := service.NewRankService()
+	rankList, _ := rankSvc.GetTopGiftRank(ctx, roomIDInt, 5)
+	c.hub.broadcast <- Message{
+		Type:      "gift_rank",
+		RoomID:    c.roomID,
+		Extra:     rankList,
+		Timestamp: time.Now().UnixMilli(),
+	}
 }
 
 func handleLeave(c *Client) {
@@ -211,4 +244,76 @@ func handleLeave(c *Client) {
 
 	// 广播用户列表更新
 	c.hub.broadcastUserList(c.roomID)
+}
+
+func handleRoomUpdate(c *Client, msg Message) {
+	roomIDInt, _ := strconv.ParseInt(c.roomID, 10, 64)
+
+	update := request.UpdateRoomReq{}
+	if err := json.Unmarshal([]byte(msg.Content), &update); err != nil {
+		c.send <- Message{Type: "error", Content: "格式错误"}.ToJSON()
+		return
+	}
+
+	roomSvc := service.NewRoomService()
+	ctx := context.WithValue(context.Background(), "auditor", c)
+	if err := roomSvc.UpdateRoom(ctx, roomIDInt, int64(c.UserID), update.Title, update.Announcement, false, ""); err != nil {
+		c.send <- Message{Type: "error", Content: err.Error()}.ToJSON()
+		return
+	}
+
+	// 广播更新（全房间）
+	c.hub.broadcast <- Message{
+		Type:      "system",
+		RoomID:    c.roomID,
+		Content:   "房间信息已更新",
+		Timestamp: time.Now().UnixMilli(),
+	}
+}
+
+func handleBanUser(c *Client, msg Message) {
+	targetID := msg.TargetID
+	if targetID <= 0 {
+		return
+	}
+	c.hub.broadcast <- Message{
+		Type:      "system",
+		RoomID:    c.roomID,
+		Content:   "用户已被禁言 5 分钟",
+		Timestamp: time.Now().UnixMilli(),
+	}
+}
+
+func handleKickUser(c *Client, msg Message) {
+	targetID := msg.TargetID
+	if targetID <= 0 {
+		return
+	}
+
+	c.hub.mu.RLock()
+	for client := range c.hub.rooms[c.roomID] {
+		if client.UserID == uint(targetID) {
+			client.send <- Message{Type: "error", Content: "您已被踢出房间"}.ToJSON()
+			c.hub.unregister <- client
+			break
+		}
+	}
+	c.hub.mu.RUnlock()
+
+	c.hub.broadcast <- Message{
+		Type:      "system",
+		RoomID:    c.roomID,
+		Content:   "用户已被踢出房间",
+		Timestamp: time.Now().UnixMilli(),
+	}
+}
+
+func handleCloseRoom(c *Client, msg Message) {
+	c.hub.broadcast <- Message{
+		Type:      "system",
+		RoomID:    c.roomID,
+		Content:   "房间已被主播关闭",
+		Timestamp: time.Now().UnixMilli(),
+	}
+	// 可选：清空房间所有客户端
 }

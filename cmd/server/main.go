@@ -30,7 +30,7 @@ func main() {
 	}
 
 	// 自动迁移
-	err = dba.AutoMigrate(&model.User{}, &model.Room{}, &model.Gift{}, &model.Transaction{})
+	err = dba.AutoMigrate(&model.User{}, &model.Room{}, &model.Gift{}, &model.Transaction{}, &model.RechargeRecord{})
 	if err != nil {
 		log.Fatal("数据库迁移失败:", err)
 	}
@@ -40,6 +40,7 @@ func main() {
 	authHandler := handler.NewAuthHandler(authSvc)
 	roomSvc := service.NewRoomService()
 	roomHandler := handler.NewRoomHandler(roomSvc)
+	rechargeHandler := handler.NewRechargeHandler()
 	ws.InitServices(roomSvc)
 
 	// 启动WebSocket的Hub（消息中心）
@@ -65,6 +66,8 @@ func main() {
 	api.POST("/createRoom", roomHandler.CreateRoom)
 	api.POST("/listRooms", roomHandler.ListRooms)
 	api.POST("/getRoom", roomHandler.GetRoom)
+
+	api.POST("/recharge", rechargeHandler.Recharge)
 
 	fmt.Printf("服务器启动成功！监听端口 %s\n", cfg.Server.Port)
 	if runErr := r.Run(cfg.Server.Port); runErr != nil {

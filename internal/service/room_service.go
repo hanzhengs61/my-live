@@ -38,12 +38,10 @@ func (s *RoomService) CreateRoom(ctx context.Context, hostID uint, req request.C
 	}
 
 	room := &model.Room{
-		Title:       req.Title,
-		Description: req.Description,
-		HostID:      hostID,
-		IsPrivate:   req.IsPrivate,
-		Password:    req.Password,
-		Status:      "waiting",
+		Title:     req.Title,
+		HostID:    int64(hostID),
+		IsPrivate: req.IsPrivate,
+		Password:  req.Password,
 	}
 
 	if err := db.DB.WithContext(ctx).Create(room).Error; err != nil {
@@ -91,4 +89,46 @@ func (s *RoomService) GetRoom(ctx context.Context, roomID uint) (*model.Room, er
 		return nil, err
 	}
 	return &room, nil
+}
+
+// UpdateRoom 主播更新房间信息
+func (s *RoomService) UpdateRoom(ctx context.Context, roomID int64, hostID int64, title, announcement string, isPrivate bool, password string) error {
+	var room model.Room
+	if err := s.db.First(&room, roomID).Error; err != nil {
+		return errors.New("房间不存在")
+	}
+	if room.HostID != hostID {
+		return errors.New("只有主播可以操作")
+	}
+
+	updates := map[string]interface{}{
+		"title":        title,
+		"announcement": announcement,
+		"is_private":   isPrivate,
+	}
+	if isPrivate && password != "" {
+		updates["password"] = password
+	} else {
+		updates["password"] = ""
+	}
+
+	return db.DB.WithContext(ctx).Model(&room).Updates(updates).Error
+}
+
+// BanUser 禁言用户
+func (s *RoomService) BanUser(ctx context.Context, roomID int64, hostID int64, targetUserID int64) error {
+	var room model.Room
+	if err := s.db.First(&room, roomID).Error; err != nil || room.HostID != hostID {
+		return errors.New("只有主播可以禁言")
+	}
+	return nil // 实际禁言逻辑可后续加 Redis 黑名单
+}
+
+// KickUser 踢出用户
+func (s *RoomService) KickUser(ctx context.Context, roomID int64, hostID int64, targetUserID int64) error {
+	var room model.Room
+	if err := s.db.First(&room, roomID).Error; err != nil || room.HostID != hostID {
+		return errors.New("只有主播可以踢人")
+	}
+	return nil // 实际踢人在 WS 层处理
 }

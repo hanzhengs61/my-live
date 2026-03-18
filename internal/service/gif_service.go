@@ -23,7 +23,7 @@ func NewGiftService() *GiftService {
 }
 
 // SendGift 发送礼物（事务扣费 + 记录交易）
-func (s *GiftService) SendGift(ctx context.Context, userID int64, req request.SendGiftReq) (gifName string, err error) {
+func (s *GiftService) SendGift(ctx context.Context, userID uint, req request.SendGiftReq) (gifName string, err error) {
 	// 查询礼物
 	var gift model.Gift
 	if giftErr := db.DB.WithContext(ctx).First(&gift, req.GiftID).Error; giftErr != nil {
@@ -54,8 +54,8 @@ func (s *GiftService) SendGift(ctx context.Context, userID int64, req request.Se
 
 		// 记录交易
 		txRecord := model.Transaction{
-			FromUserID: userID,
-			ToUserID:   int64(room.HostID),
+			FromUserID: int64(userID),
+			ToUserID:   room.HostID,
 			RoomID:     req.RoomID,
 			GiftID:     req.GiftID,
 			Count:      req.Count,
@@ -70,5 +70,7 @@ func (s *GiftService) SendGift(ctx context.Context, userID int64, req request.Se
 		db.DB.WithContext(ctx).Rollback()
 		return "", TransactionErr
 	}
+	rankSvc := NewRankService()
+	_ = rankSvc.AddGiftScore(ctx, req.RoomID, userID, totalPrice)
 	return gift.Name, nil
 }

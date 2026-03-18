@@ -188,6 +188,16 @@
             当前房间： <span id="currentRoom">无</span><br>
             在线用户 (<span id="online">0</span>)
             <div id="userList" style="max-height:400px; overflow-y:auto; font-size:14px;"></div>
+            礼物排行榜
+            <div id="giftRank" style="max-height:300px; overflow-y:auto; font-size:14px;"></div>
+            <div class="panel" id="hostPanel" style="display:none;">
+                <h3>主播管理</h3>
+                <input id="newTitle" placeholder="新标题" style="width:300px">
+                <input id="newAnnouncement" placeholder="新公告" style="width:300px">
+                <button onclick="updateRoomInfo()">更新房间信息</button>
+                <button onclick="banUser()">禁言用户</button>
+                <button onclick="kickUser()">踢出用户</button>
+            </div>
         </div>
 
 
@@ -223,6 +233,12 @@
             <input id="privateTarget" placeholder="对方用户 ID" style="width:150px">
             <input id="privateMsg" placeholder="私信内容" style="width:300px">
             <button onclick="sendPrivate()">发送私信</button>
+        </div>
+
+        <div class="panel">
+            <h3>充值</h3>
+            <input id="rechargeAmount" placeholder="充值金额（币）" style="width:200px" type="number">
+            <button onclick="recharge()">立即充值</button>
         </div>
     </div>
 
@@ -390,8 +406,25 @@
                             userListDiv.innerHTML = "<div style='color:#888;padding:10px;'>暂无在线用户</div>";
                         }
                         break;
+                    case "gift_rank":
+                        const rankDiv = document.getElementById("giftRank");
+                        rankDiv.innerHTML = "";
+
+                        if (msg.extra && Array.isArray(msg.extra) && msg.extra.length > 0) {
+                            msg.extra.forEach(item => {
+                                const div = document.createElement("div");
+                                div.innerHTML = `${item.rank}. ${item.nickname} - ${item.total}币`;
+                                rankDiv.appendChild(div);
+                            });
+                        } else {
+                            rankDiv.innerHTML = "<div style='color:#888; text-align:center; padding:20px;'>暂无礼物排行，快来送礼吧～</div>";
+                        }
+                        break;
                     case "system":
                         log(msg.content, "system");
+                        if (msg.is_host) {
+                            document.getElementById("hostPanel").style.display = "block";
+                        }
                         break;
                     case "error":
                         log("❌ " + msg.content, "error");
@@ -520,6 +553,65 @@
             content: text
         }));
         document.getElementById("privateMsg").value = "";
+    }
+
+    function updateRoomInfo() {
+        const title = document.getElementById("newTitle").value.trim();
+        const ann = document.getElementById("newAnnouncement").value.trim();
+
+        ws.send(JSON.stringify({
+            type: "room_update",
+            room_id: currentRoom,
+            content: JSON.stringify({title: title, announcement: ann})
+        }));
+    }
+
+    function banUser() {
+        const targetID = prompt("输入要禁言的用户ID");
+        if (targetID) {
+            ws.send(JSON.stringify({
+                type: "ban_user",
+                room_id: currentRoom,
+                target_id: parseInt(targetID)
+            }));
+        }
+    }
+
+    function kickUser() {
+        const targetID = prompt("输入要踢出的用户ID");
+        if (targetID) {
+            ws.send(JSON.stringify({
+                type: "kick_user",
+                room_id: currentRoom,
+                target_id: parseInt(targetID)
+            }));
+        }
+    }
+
+    function recharge() {
+        const amount = parseInt(document.getElementById("rechargeAmount").value);
+        if (!amount || amount <= 0) {
+            alert("请输入充值金额");
+            return;
+        }
+
+        fetch("http://localhost:8080/api/recharge", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": token
+            },
+            body: JSON.stringify({ amount: amount })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 0) {
+                    alert("充值成功！余额 +" + amount);
+                    document.getElementById("rechargeAmount").value = "";
+                } else {
+                    alert(data.message || "充值失败");
+                }
+            });
     }
 
     window.addEventListener("load", () => {

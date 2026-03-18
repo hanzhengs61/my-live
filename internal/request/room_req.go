@@ -6,3 +6,8 @@ type CreateRoomReq struct {
 	IsPrivate   bool   `json:"is_private"`                       // 是否私密房间
 	Password    string `json:"password"`                         // 如果 is_private=true，则必须提供密码
 }
+
+type UpdateRoomReq struct {
+	Title        string `json:"title"`
+	Announcement string `json:"announcement"`
+}

@@ -14,6 +14,10 @@ const (
 	TypePong        MessageType = "pong"         // 心跳pong（客户端回复）
 	TypeOnline      MessageType = "online"       // 在线人数
 	TypePrivateChat MessageType = "private_chat" // 私信
+	TypeRoomUpdate  MessageType = "room_update"  // 主播更新房间信息
+	TypeBanUser     MessageType = "ban_user"     // 禁言用户
+	TypeKickUser    MessageType = "kick_user"    // 踢出用户
+	TypeCloseRoom   MessageType = "close_room"   // 关闭房间
 )
 
 // Message 是所有WebSocket消息的统一结构（JSON结构）
@@ -28,7 +32,8 @@ type Message struct {
 	GiftID      int64       `json:"gift_id,omitempty"`      // 礼物ID（如 "rose"）
 	Count       int         `json:"count,omitempty"`        // 数量
 	GiftName    string      `json:"gift_name,omitempty"`    // 礼物名称（如 "玫瑰"）
-	Timestamp   int64       `json:"timestamp"`              // 时间戳（毫秒）
+	IsHost      bool        `json:"is_host"`
+	Timestamp   int64       `json:"timestamp"` // 时间戳（毫秒）
 	Extra       interface{} `json:"extra,omitempty"`
 }
 
