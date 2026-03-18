@@ -30,18 +30,20 @@ func main() {
 	}
 
 	// 自动迁移
-	err = dba.AutoMigrate(&model.User{}, &model.Room{}, &model.Gift{}, &model.Transaction{}, &model.RechargeRecord{})
+	err = dba.AutoMigrate(&model.User{}, &model.Room{}, &model.Gift{}, &model.Transaction{}, &model.RechargeRecord{}, &model.ChatMessage{})
 	if err != nil {
 		log.Fatal("数据库迁移失败:", err)
 	}
 	db.Init(dba)
 	// 创建 auth 服务
 	authSvc := service.NewAuthService(cfg)
-	authHandler := handler.NewAuthHandler(authSvc)
 	roomSvc := service.NewRoomService()
+	rechargeSvc := service.NewRechargeService()
+	chatSvc := service.NewChatService()
+	authHandler := handler.NewAuthHandler(authSvc)
 	roomHandler := handler.NewRoomHandler(roomSvc)
-	rechargeHandler := handler.NewRechargeHandler()
-	ws.InitServices(roomSvc)
+	rechargeHandler := handler.NewRechargeHandler(rechargeSvc)
+	ws.InitServices(roomSvc, chatSvc)
 
 	// 启动WebSocket的Hub（消息中心）
 	// Hub会在后台一直运行，负责把消息广播给所有客户端

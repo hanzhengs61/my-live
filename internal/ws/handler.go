@@ -4,7 +4,6 @@ import (
 	"log"
 	"my-live/internal/utils"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -59,12 +58,4 @@ func WsHandler(c *gin.Context, w http.ResponseWriter, r *http.Request) {
 	// 2. 持续把消息写给客户端（消息中心Hub要广播给我们）
 	go client.readPump()
 	go client.writePump()
-
-	// 可选：连接成功后主动发一条欢迎消息
-	welcomeMsg := Message{
-		Type:      "system",
-		Content:   "欢迎 " + client.Nickname + " 进入聊天！",
-		Timestamp: time.Now().UnixMilli(),
-	}
-	client.send <- welcomeMsg.ToJSON()
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"my-live/internal/model"
 	"my-live/internal/redis"
 	"my-live/internal/request"
 	"my-live/internal/service"
@@ -13,10 +14,12 @@ import (
 
 var (
 	roomService *service.RoomService
+	chatService *service.ChatService
 )
 
-func InitServices(rs *service.RoomService) {
+func InitServices(rs *service.RoomService, cs *service.ChatService) {
 	roomService = rs
+	chatService = cs
 }
 
 // HandleMessage 统一处理所有消息
@@ -48,51 +51,7 @@ func HandleMessage(c *Client, msg Message) {
 
 // ==================== 具体业务处理 ====================
 
-func handlePrivateChat(c *Client, msg Message) {
-	if c.roomID == "" {
-		c.send <- Message{Type: "error", Content: "请先加入房间"}.ToJSON()
-		return
-	}
-
-	targetUserID := msg.TargetID
-	if targetUserID <= 0 {
-		c.send <- Message{Type: "error", Content: "无效的目标用户 ID"}.ToJSON()
-		return
-	}
-
-	// 构造私聊消息（只发给目标用户）
-	privateMsg := Message{
-		Type:      TypePrivateChat,
-		RoomID:    c.roomID,
-		UserID:    int64(c.UserID),
-		Nickname:  c.Nickname,
-		Content:   msg.Content,
-		TargetID:  targetUserID,
-		Timestamp: time.Now().UnixMilli(),
-	}
-
-	found := false
-	c.hub.mu.RLock()
-	for client := range c.hub.rooms[c.roomID] {
-		if client.UserID == uint(targetUserID) {
-			client.send <- privateMsg.ToJSON()
-			found = true
-			break
-		}
-	}
-	c.hub.mu.RUnlock()
-	if !found {
-		c.send <- Message{Type: "error", Content: "目标用户不在当前房间"}.ToJSON()
-		return
-	}
-
-	c.send <- Message{
-		Type:      "system",
-		Content:   "私聊消息:" + privateMsg.Content,
-		Timestamp: time.Now().UnixMilli(),
-	}.ToJSON()
-}
-
+// 加入房间
 func handleJoin(c *Client, msg Message) {
 	roomIDUint, err := strconv.ParseUint(msg.RoomID, 10, 32)
 	if err != nil {
@@ -151,8 +110,26 @@ func handleJoin(c *Client, msg Message) {
 		Extra:     rankList,
 		Timestamp: time.Now().UnixMilli(),
 	}
+	// 加载并发送历史消息
+	if chatService != nil {
+		messages, chatErr := chatService.GetRecentMessages(ctx, roomIDInt, 50)
+		if chatErr == nil {
+			for i := len(messages) - 1; i >= 0; i-- { // 倒序发送，保证时间顺序
+				m := messages[i]
+				c.send <- Message{
+					Type:      MessageType(m.Type),
+					RoomID:    strconv.FormatInt(m.RoomID, 10),
+					UserID:    m.UserID,
+					Nickname:  m.Nickname,
+					Content:   m.Content,
+					Timestamp: m.CreatedAt,
+				}.ToJSON()
+			}
+		}
+	}
 }
 
+// 发送弹幕
 func handleChat(c *Client, msg Message) {
 	if c.roomID == "" {
 		c.send <- Message{Type: "error", Content: "请先加入房间"}.ToJSON()
@@ -162,9 +139,24 @@ func handleChat(c *Client, msg Message) {
 	msg.RoomID = c.roomID
 	msg.UserID = int64(c.UserID)
 	msg.Nickname = c.Nickname
-	msg.Timestamp = time.Now().UnixMilli()
-
+	// 广播给房间所有人
 	c.hub.broadcast <- msg
+	if chatService != nil {
+		roomIDInt, _ := strconv.ParseInt(c.roomID, 10, 64)
+		record := &model.ChatMessage{
+			Type:     "chat",
+			RoomID:   roomIDInt,
+			UserID:   msg.UserID,
+			Nickname: msg.Nickname,
+			Content:  msg.Content,
+		}
+		go func() {
+			ctx := context.WithValue(context.Background(), "auditor", c)
+			if err := chatService.SaveMessage(ctx, record); err != nil {
+				log.Printf("保存聊天消息失败: %v", err)
+			}
+		}()
+	}
 }
 
 func handleGift(c *Client, msg Message) {
@@ -269,6 +261,51 @@ func handleRoomUpdate(c *Client, msg Message) {
 		Content:   "房间信息已更新",
 		Timestamp: time.Now().UnixMilli(),
 	}
+}
+
+func handlePrivateChat(c *Client, msg Message) {
+	if c.roomID == "" {
+		c.send <- Message{Type: "error", Content: "请先加入房间"}.ToJSON()
+		return
+	}
+
+	targetUserID := msg.TargetID
+	if targetUserID <= 0 {
+		c.send <- Message{Type: "error", Content: "无效的目标用户 ID"}.ToJSON()
+		return
+	}
+
+	// 构造私聊消息（只发给目标用户）
+	privateMsg := Message{
+		Type:      TypePrivateChat,
+		RoomID:    c.roomID,
+		UserID:    int64(c.UserID),
+		Nickname:  c.Nickname,
+		Content:   msg.Content,
+		TargetID:  targetUserID,
+		Timestamp: time.Now().UnixMilli(),
+	}
+
+	found := false
+	c.hub.mu.RLock()
+	for client := range c.hub.rooms[c.roomID] {
+		if client.UserID == uint(targetUserID) {
+			client.send <- privateMsg.ToJSON()
+			found = true
+			break
+		}
+	}
+	c.hub.mu.RUnlock()
+	if !found {
+		c.send <- Message{Type: "error", Content: "目标用户不在当前房间"}.ToJSON()
+		return
+	}
+
+	c.send <- Message{
+		Type:      "system",
+		Content:   "私聊消息:" + privateMsg.Content,
+		Timestamp: time.Now().UnixMilli(),
+	}.ToJSON()
 }
 
 func handleBanUser(c *Client, msg Message) {

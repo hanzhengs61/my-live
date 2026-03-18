@@ -10,10 +10,11 @@ import (
 )
 
 type RechargeHandler struct {
+	rechargeSvc *service.RechargeService
 }
 
-func NewRechargeHandler() *RechargeHandler {
-	return &RechargeHandler{}
+func NewRechargeHandler(rechargeSvc *service.RechargeService) *RechargeHandler {
+	return &RechargeHandler{rechargeSvc: rechargeSvc}
 }
 
 func (h *RechargeHandler) Recharge(c *gin.Context) {
@@ -31,8 +32,7 @@ func (h *RechargeHandler) Recharge(c *gin.Context) {
 		return
 	}
 
-	rechargeSvc := service.NewRechargeService()
-	if err := rechargeSvc.Recharge(c.Request.Context(), userID, r.Amount); err != nil {
+	if err := h.rechargeSvc.Recharge(c.Request.Context(), userID, r.Amount); err != nil {
 		response.Error(c, 400, err.Error())
 		return
 	}

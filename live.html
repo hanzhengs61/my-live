@@ -157,6 +157,13 @@
         #userList div:hover {
             background: rgba(255, 255, 255, 0.1);
         }
+
+        .msg span {
+            color: #ffffff;
+            font-size: 12px;
+            margin-right: 8px;
+            user-select: none;
+        }
     </style>
 </head>
 <body>
@@ -329,56 +336,33 @@
         }
 
         ws = new WebSocket(`ws://localhost:8080/ws?token=${encodeURIComponent(token)}`);
-
-        ws.onopen = () => {
-            log("WebSocket 已连接", "system");
-        };
         ws.onmessage = (e) => {
             try {
                 const msg = JSON.parse(e.data);
                 console.log("收到消息:", msg);
                 switch (msg.type) {
                     case "join":
-                        log(msg.nickname + " 进入房间", "join");
+                        log(msg, "join");
                         if (msg.room_id) updateRoom(msg.room_id);
                         break;
                     case "leave":
-                        log(msg.nickname + " 离开房间", "leave");
+                        log(msg, "leave");
                         break;
                     case "chat":
-                        log(`<b>${msg.nickname}</b>：${msg.content}`, "chat");
+                        log(msg, "chat");
                         break;
                     case "gift":
-                        let effectClass = "gift-effect";
-                        let emoji = "🎁";
-                        if (msg.content.includes("玫瑰")) {
-                            effectClass += " rose";
-                            emoji = "🌹";
-                        } else if (msg.content.includes("爱心")) {
-                            effectClass += " heart";
-                            emoji = "❤️";
-                        } else if (msg.content.includes("火箭")) {
-                            effectClass += " rocket";
-                            emoji = "🚀";
-                        } else if (msg.content.includes("跑车")) {
-                            effectClass += " car";
-                            emoji = "🏎️";
-                        }
-                        showGiftEffect(emoji, msg.nickname, msg.content);
-                        log(emoji + " " + msg.nickname + msg.content, "gift");
+                        const giftID = msg.gift_id || 1;
+                        showGiftEffect("", msg.nickname, msg.content, giftID);
+                        log(msg, "gift");
                         break;
                     case "private_chat":
-                        log("📩 [私聊] " + msg.nickname + " : " + msg.content, "private");
+                        log(msg, "private");
                         break;
                     case "user_list":
                         document.getElementById("online").innerText = msg.online_count || 0;
 
                         const userListDiv = document.getElementById("userList");
-                        if (!userListDiv) {
-                            console.error("找不到 #userList 元素！");
-                            break;
-                        }
-
                         userListDiv.innerHTML = "";
 
                         if (msg.extra && Array.isArray(msg.extra)) {
@@ -421,17 +405,15 @@
                         }
                         break;
                     case "system":
-                        log(msg.content, "system");
+                        log(msg, "system");
                         if (msg.is_host) {
                             document.getElementById("hostPanel").style.display = "block";
                         }
                         break;
                     case "error":
-                        log("❌ " + msg.content, "error");
-                        alert(msg.content);
+                        log(msg, "error");
+                        alert(msg.content || msg.Content);
                         break;
-                    default:
-                        log("未知消息:" + JSON.stringify(msg), "system");
                 }
             } catch (err) {
                 console.error(err);
@@ -445,10 +427,30 @@
     }
 
     // UI 辅助
-    function log(text, cls) {
+    function log(msg, cls) {
         const div = document.createElement("div");
         div.className = "msg " + (cls || "");
-        div.innerHTML = text;
+
+        let timeStr = "00:00:00";
+        if (msg && msg.timestamp) {
+            let ts = msg.timestamp;
+
+            // 自动判断是秒级还是毫秒级时间戳
+            if (ts.toString().length === 10) {
+                ts = ts * 1000;   // 秒级转毫秒
+            }
+            const date = new Date(ts);
+            timeStr = date.getHours().toString().padStart(2, '0') + ':' +
+                date.getMinutes().toString().padStart(2, '0') + ':' +
+                date.getSeconds().toString().padStart(2, '0');
+        }
+
+        const content = (msg && msg.nickname)
+            ? `<b>${msg.nickname}</b>：${msg.content || msg.Content || ''}`
+            : (msg && msg.content) || (msg && msg.Content) || msg || "未知消息";
+
+        div.innerHTML = `<span style="color:#888; font-size:12px; margin-right:8px;">${timeStr}</span>${content}`;
+
         const chat = document.getElementById("chat");
         chat.appendChild(div);
         chat.scrollTop = chat.scrollHeight;
@@ -491,7 +493,6 @@
         currentRoom = room;
         document.getElementById("currentRoom").innerText = room;
         ws.send(JSON.stringify({type: "join", room_id: room, content: ""}));
-        log("正在加入房间 " + room + "...", "system");
     }
 
     function leaveRoom() {
@@ -503,14 +504,10 @@
             return;
         }
         ws.send(JSON.stringify({type: "leave"}));
-        log("已发送离开请求", "system");
         updateRoom("");
     }
 
-    // 礼物特效
-    let giftMap = {}; // key = sender+gift
-
-    function showGiftEffect(emoji,sender,gift) {
+    function showGiftEffect(emoji, sender, gift) {
         const eff = document.createElement("div");
         eff.className = "gift-effect";
         eff.innerHTML = `${emoji} ${gift}`;
@@ -601,7 +598,7 @@
                 "Content-Type": "application/json",
                 "Authorization": token
             },
-            body: JSON.stringify({ amount: amount })
+            body: JSON.stringify({amount: amount})
         })
             .then(res => res.json())
             .then(data => {
