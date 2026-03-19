@@ -3,6 +3,7 @@ package ws
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"my-live/internal/model"
 	"my-live/internal/redis"
@@ -25,24 +26,25 @@ func InitServices(rs *service.RoomService, cs *service.ChatService) {
 // HandleMessage 统一处理所有消息
 func HandleMessage(c *Client, msg Message) {
 	switch msg.Type {
-	case TypeJoin:
+
+	case TypeJoin: // 加入房间
 		handleJoin(c, msg)
-	case TypeChat:
+	case TypeChat: // 发送弹幕
 		handleChat(c, msg)
-	case TypeGift:
+	case TypeGift: // 发送礼物
 		handleGift(c, msg)
-	case TypeLeave:
+	case TypeLeave: // 离开房间
 		handleLeave(c)
 	case TypePong: // 心跳
-	case TypePrivateChat:
+	case TypePrivateChat: // 私聊
 		handlePrivateChat(c, msg)
-	case TypeRoomUpdate:
+	case TypeRoomUpdate: // 房间更新
 		handleRoomUpdate(c, msg)
-	case TypeBanUser:
+	case TypeBanUser: // 封禁用户
 		handleBanUser(c, msg)
-	case TypeKickUser:
+	case TypeKickUser: // 踢人
 		handleKickUser(c, msg)
-	case TypeCloseRoom:
+	case TypeCloseRoom: // 关闭房间
 		handleCloseRoom(c, msg)
 	default:
 		log.Printf("未知消息类型: %s", msg.Type)
@@ -53,6 +55,17 @@ func HandleMessage(c *Client, msg Message) {
 
 // 加入房间
 func handleJoin(c *Client, msg Message) {
+
+	// 踢人
+	roomKey := fmt.Sprintf("live:room:%s:kicked_users", msg.RoomID)
+	ctx := context.Background()
+
+	isKicked, err := redis.Client.SIsMember(ctx, roomKey, c.UserID).Result()
+	if err == nil && isKicked {
+		c.send <- Message{Type: "error", Content: "您已被主播踢出房间，30分钟内无法加入"}.ToJSON()
+		return
+	}
+
 	roomIDUint, err := strconv.ParseUint(msg.RoomID, 10, 32)
 	if err != nil {
 		c.send <- Message{Type: "error", Content: "无效的房间 ID"}.ToJSON()
@@ -102,7 +115,6 @@ func handleJoin(c *Client, msg Message) {
 	// 广播最新礼物排行榜
 	rankSvc := service.NewRankService()
 	roomIDInt, _ := strconv.ParseInt(c.roomID, 10, 64)
-	ctx := context.WithValue(context.Background(), "auditor", c)
 	rankList, _ := rankSvc.GetTopGiftRank(ctx, roomIDInt, 5)
 	c.hub.broadcast <- Message{
 		Type:      "gift_rank",
@@ -136,23 +148,32 @@ func handleChat(c *Client, msg Message) {
 		return
 	}
 
+	banKey := fmt.Sprintf("live:room:%s:banned_users", c.roomID)
+	ctx := context.WithValue(context.Background(), "auditor", c)
+	isBanned, err := redis.Client.SIsMember(ctx, banKey, c.UserID).Result()
+	if err == nil && isBanned {
+		c.send <- Message{Type: "error", Content: "您已被禁言，无法发言"}.ToJSON()
+		return
+	}
+
 	msg.RoomID = c.roomID
 	msg.UserID = int64(c.UserID)
 	msg.Nickname = c.Nickname
+	msg.Timestamp = time.Now().Unix()
 	// 广播给房间所有人
 	c.hub.broadcast <- msg
 	if chatService != nil {
 		roomIDInt, _ := strconv.ParseInt(c.roomID, 10, 64)
 		record := &model.ChatMessage{
-			Type:     "chat",
-			RoomID:   roomIDInt,
-			UserID:   msg.UserID,
-			Nickname: msg.Nickname,
-			Content:  msg.Content,
+			Type:      "chat",
+			RoomID:    roomIDInt,
+			UserID:    msg.UserID,
+			Nickname:  msg.Nickname,
+			Content:   msg.Content,
+			Timestamp: msg.Timestamp,
 		}
 		go func() {
-			ctx := context.WithValue(context.Background(), "auditor", c)
-			if err := chatService.SaveMessage(ctx, record); err != nil {
+			if SaveMessageErr := chatService.SaveMessage(ctx, record); SaveMessageErr != nil {
 				log.Printf("保存聊天消息失败: %v", err)
 			}
 		}()
@@ -238,31 +259,6 @@ func handleLeave(c *Client) {
 	c.hub.broadcastUserList(c.roomID)
 }
 
-func handleRoomUpdate(c *Client, msg Message) {
-	roomIDInt, _ := strconv.ParseInt(c.roomID, 10, 64)
-
-	update := request.UpdateRoomReq{}
-	if err := json.Unmarshal([]byte(msg.Content), &update); err != nil {
-		c.send <- Message{Type: "error", Content: "格式错误"}.ToJSON()
-		return
-	}
-
-	roomSvc := service.NewRoomService()
-	ctx := context.WithValue(context.Background(), "auditor", c)
-	if err := roomSvc.UpdateRoom(ctx, roomIDInt, int64(c.UserID), update.Title, update.Announcement, false, ""); err != nil {
-		c.send <- Message{Type: "error", Content: err.Error()}.ToJSON()
-		return
-	}
-
-	// 广播更新（全房间）
-	c.hub.broadcast <- Message{
-		Type:      "system",
-		RoomID:    c.roomID,
-		Content:   "房间信息已更新",
-		Timestamp: time.Now().UnixMilli(),
-	}
-}
-
 func handlePrivateChat(c *Client, msg Message) {
 	if c.roomID == "" {
 		c.send <- Message{Type: "error", Content: "请先加入房间"}.ToJSON()
@@ -308,11 +304,46 @@ func handlePrivateChat(c *Client, msg Message) {
 	}.ToJSON()
 }
 
+func handleRoomUpdate(c *Client, msg Message) {
+	roomIDInt, _ := strconv.ParseInt(c.roomID, 10, 64)
+
+	update := request.UpdateRoomReq{}
+	if err := json.Unmarshal([]byte(msg.Content), &update); err != nil {
+		c.send <- Message{Type: "error", Content: "格式错误"}.ToJSON()
+		return
+	}
+
+	ctx := context.WithValue(context.Background(), "auditor", c)
+	if err := roomService.UpdateRoom(ctx, roomIDInt, int64(c.UserID), update.Title, update.Announcement, false, ""); err != nil {
+		c.send <- Message{Type: "error", Content: err.Error()}.ToJSON()
+		return
+	}
+
+	// 广播更新（全房间）
+	c.hub.broadcast <- Message{
+		Type:      "system",
+		RoomID:    c.roomID,
+		Content:   "房间信息已更新",
+		Timestamp: time.Now().UnixMilli(),
+	}
+}
+
 func handleBanUser(c *Client, msg Message) {
 	targetID := msg.TargetID
 	if targetID <= 0 {
 		return
 	}
+
+	banKey := fmt.Sprintf("live:room:%s:banned_users", c.roomID)
+	ctx := context.WithValue(context.Background(), "auditor", c)
+	_, err := redis.Client.SAdd(ctx, banKey, targetID).Result()
+	if err != nil {
+		c.send <- Message{Type: "error", Content: "禁言失败"}.ToJSON()
+		return
+	}
+	// 设置过期时间（5分钟后自动解除）
+	redis.Client.Expire(ctx, banKey, 5*time.Minute)
+
 	c.hub.broadcast <- Message{
 		Type:      "system",
 		RoomID:    c.roomID,
@@ -324,13 +355,28 @@ func handleBanUser(c *Client, msg Message) {
 func handleKickUser(c *Client, msg Message) {
 	targetID := msg.TargetID
 	if targetID <= 0 {
+		c.send <- Message{Type: "error", Content: "无效的用户 ID"}.ToJSON()
 		return
 	}
 
+	// 踢人
+	roomKey := fmt.Sprintf("live:room:%s:kicked_users", c.roomID)
+	ctx := context.WithValue(context.Background(), "auditor", c)
+
+	// 添加到踢人集合，并设置 30 分钟过期
+	_, err := redis.Client.SAdd(ctx, roomKey, targetID).Result()
+	if err != nil {
+		c.send <- Message{Type: "error", Content: "踢人失败"}.ToJSON()
+		return
+	}
+	redis.Client.Expire(ctx, roomKey, 30*time.Minute) // 30分钟内无法重连
+
+	// 强制关闭当前连接
 	c.hub.mu.RLock()
 	for client := range c.hub.rooms[c.roomID] {
 		if client.UserID == uint(targetID) {
-			client.send <- Message{Type: "error", Content: "您已被踢出房间"}.ToJSON()
+			client.send <- Message{Type: "error", Content: "您已被主播踢出房间（30分钟内无法重连）"}.ToJSON()
+			client.conn.Close()
 			c.hub.unregister <- client
 			break
 		}
@@ -340,7 +386,7 @@ func handleKickUser(c *Client, msg Message) {
 	c.hub.broadcast <- Message{
 		Type:      "system",
 		RoomID:    c.roomID,
-		Content:   "用户已被踢出房间",
+		Content:   "用户已被踢出房间（30分钟内无法重连）",
 		Timestamp: time.Now().UnixMilli(),
 	}
 }
@@ -349,8 +395,18 @@ func handleCloseRoom(c *Client, msg Message) {
 	c.hub.broadcast <- Message{
 		Type:      "system",
 		RoomID:    c.roomID,
-		Content:   "房间已被主播关闭",
+		Content:   "房间已被主播关闭，所有用户已被请出",
 		Timestamp: time.Now().UnixMilli(),
 	}
-	// 可选：清空房间所有客户端
+
+	// 清空房间所有客户端
+	c.hub.mu.Lock()
+	if clients, ok := c.hub.rooms[c.roomID]; ok {
+		for client := range clients {
+			client.send <- Message{Type: "error", Content: "房间已被关闭"}.ToJSON()
+			c.hub.unregister <- client
+		}
+		delete(c.hub.rooms, c.roomID)
+	}
+	c.hub.mu.Unlock()
 }

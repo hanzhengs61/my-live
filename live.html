@@ -204,6 +204,7 @@
                 <button onclick="updateRoomInfo()">更新房间信息</button>
                 <button onclick="banUser()">禁言用户</button>
                 <button onclick="kickUser()">踢出用户</button>
+                <button onclick="closeRoom()" style="background:#dc3545;">关闭房间</button>
             </div>
         </div>
 
@@ -426,7 +427,6 @@
         };
     }
 
-    // UI 辅助
     function log(msg, cls) {
         const div = document.createElement("div");
         div.className = "msg " + (cls || "");
@@ -581,6 +581,15 @@
                 type: "kick_user",
                 room_id: currentRoom,
                 target_id: parseInt(targetID)
+            }));
+        }
+    }
+
+    function closeRoom() {
+        if (confirm("确定要关闭房间吗？所有用户将被请出！")) {
+            ws.send(JSON.stringify({
+                type: "close_room",
+                room_id: currentRoom
             }));
         }
     }
